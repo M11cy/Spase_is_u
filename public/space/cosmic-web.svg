@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Космическая сеть">
+  <defs>
+    <radialGradient id="bg" cx="52%" cy="50%" r="70%">
+      <stop offset="0" stop-color="#132147"/>
+      <stop offset="0.52" stop-color="#071126"/>
+      <stop offset="1" stop-color="#01040b"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g stroke="#9bb8ff" stroke-width="2" stroke-linecap="round" opacity="0.42" filter="url(#glow)">
+    <path d="M84 600 C190 520 252 530 342 430 S520 275 650 310 S844 404 970 278 S1120 148 1224 92"/>
+    <path d="M126 178 C220 245 302 242 396 318 S562 510 742 462 S960 354 1194 512"/>
+    <path d="M68 370 C214 338 304 224 474 190 S740 164 916 228 S1092 278 1238 236"/>
+    <path d="M252 662 C366 574 464 566 590 514 S724 330 852 254"/>
+    <path d="M548 96 C592 194 682 230 782 312 S930 510 1058 642"/>
+  </g>
+  <g fill="#e9f0ff" filter="url(#glow)">
+    <circle cx="84" cy="600" r="7"/>
+    <circle cx="342" cy="430" r="10"/>
+    <circle cx="650" cy="310" r="13"/>
+    <circle cx="970" cy="278" r="9"/>
+    <circle cx="1224" cy="92" r="6"/>
+    <circle cx="126" cy="178" r="6"/>
+    <circle cx="396" cy="318" r="8"/>
+    <circle cx="742" cy="462" r="12"/>
+    <circle cx="1194" cy="512" r="8"/>
+    <circle cx="474" cy="190" r="9"/>
+    <circle cx="916" cy="228" r="11"/>
+    <circle cx="252" cy="662" r="6"/>
+    <circle cx="590" cy="514" r="8"/>
+    <circle cx="1058" cy="642" r="7"/>
+    <circle cx="548" cy="96" r="7"/>
+  </g>
+</svg>
