@@ -2,6 +2,7 @@ node_modules/
 dist/
 tmp/
 .superpowers/
+.worktrees/
 .server.pid
 .DS_Store
 Thumbs.db
