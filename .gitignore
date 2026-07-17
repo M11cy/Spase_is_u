@@ -1,8 +1,11 @@
 node_modules/
 dist/
+coverage/
+test-results/
 tmp/
 .superpowers/
 .worktrees/
 .server.pid
+.server.url
 .DS_Store
 Thumbs.db
