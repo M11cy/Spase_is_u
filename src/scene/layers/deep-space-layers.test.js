@@ -375,4 +375,31 @@ describe("createLocalGroupLayer", () => {
 
     layer.dispose();
   });
+
+  it("forms M32 as a deterministic, centered, smooth anisotropic ellipsoid distinct from spiral and clumped profiles", () => {
+    const first = createLocalGroup();
+    const second = createLocalGroup();
+    const positions = first.root.getObjectByName("group-m32-stars").geometry.getAttribute("position").array;
+    const pointCount = positions.length / 3;
+    const m32Size = localGroupAnnotations.find(({ id }) => id === "group-m32").size;
+    const horizontalRadius = m32Size * 0.78;
+    const verticalRadius = m32Size * 0.86 * 0.4;
+    const coordinate = (axis) => Array.from({ length: pointCount }, (_, index) => positions[index * 3 + axis]);
+    const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+    const deviation = (values) => Math.sqrt(mean(values.map((value) => (value - mean(values)) ** 2)));
+    const normalizedRadii = Array.from({ length: pointCount }, (_, index) => {
+      const x = positions[index * 3] / horizontalRadius;
+      const y = positions[index * 3 + 1] / verticalRadius;
+      return Math.hypot(x, y);
+    });
+
+    expect(Math.abs(mean(coordinate(0)))).toBeLessThan(0.65);
+    expect(Math.abs(mean(coordinate(1)))).toBeLessThan(0.35);
+    expect(deviation(coordinate(0))).toBeGreaterThan(deviation(coordinate(1)) * 1.7);
+    expect(normalizedRadii.every((radius) => radius <= 1.001)).toBe(true);
+    expect(positions).toEqual(second.root.getObjectByName("group-m32-stars").geometry.getAttribute("position").array);
+
+    first.dispose();
+    second.dispose();
+  });
 });

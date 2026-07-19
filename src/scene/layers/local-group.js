@@ -99,6 +99,7 @@ const createStars = (THREE, annotation, profile, glowTexture) => {
     const arm = index % 4;
     const progression = (Math.floor(index / 4) + random() * 0.55) / Math.ceil(config.stars / 4);
     const smoothRadius = Math.sqrt(random());
+    const smoothAngle = random() * Math.PI * 2;
     const spiralRadius = size * (0.14 + progression * 0.74);
     const spiralAngle = arm * Math.PI / 2 + progression * 5.4 + (random() - 0.5) * 0.09;
     const clump = index % 3;
@@ -112,13 +113,13 @@ const createStars = (THREE, annotation, profile, glowTexture) => {
       ? Math.cos(spiralAngle) * spiralRadius
       : profile === "irregular"
         ? (clumpCenters[clump].x + clumpSpread) * size
-        : Math.cos(random() * Math.PI * 2) * smoothRadius * size * 0.78;
+        : Math.cos(smoothAngle) * smoothRadius * size * 0.78;
     const y = profile === "spiral"
       ? Math.sin(spiralAngle) * spiralRadius * 0.62
       : profile === "irregular"
         ? (clumpCenters[clump].y + clumpSpread * 0.72) * size
-        : Math.sin(random() * Math.PI * 2) * smoothRadius * size * config.thickness * 0.4;
-    const z = (random() - 0.5) * size * config.thickness;
+        : Math.sin(smoothAngle) * smoothRadius * size * config.thickness * 0.4;
+    const z = (random() - 0.5) * size * config.thickness * (profile === "elliptical" ? 0.72 : 1);
     const tone = 0.54 + random() * 0.46;
     positions.push(x, y, z);
     colors.push(tone, tone * (0.9 + random() * 0.1), 1);
