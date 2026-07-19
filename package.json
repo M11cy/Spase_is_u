@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "vite build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1 --port 5173",
     "serve": "node serve-dist.js",
     "assets:optimize": "node scripts/optimize-assets.mjs"
