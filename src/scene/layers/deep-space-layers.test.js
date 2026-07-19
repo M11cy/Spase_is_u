@@ -488,6 +488,33 @@ describe("createCosmicWebLayer", () => {
     layer.dispose();
   });
 
+  it("forms deterministic quality-scaled galaxy-point clusters around every graph node", () => {
+    const first = createCosmicWeb();
+    const second = createCosmicWeb();
+    const high = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 9800 } });
+    const firstNodes = first.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
+    const secondNodes = second.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
+    const highNodes = high.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
+    const clusterPositions = firstNodes.array;
+    const nearbyCount = (center) => Array.from({ length: firstNodes.count }, (_, index) => {
+      const offset = index * 3;
+      return Math.hypot(
+        clusterPositions[offset] - center[0],
+        clusterPositions[offset + 1] - center[1],
+        clusterPositions[offset + 2] - center[2]
+      );
+    }).filter((distance) => distance < 24).length;
+
+    expect(firstNodes.count).toBeGreaterThan(first.graph.nodes.length);
+    expect(highNodes.count).toBeGreaterThan(firstNodes.count);
+    expect(firstNodes.array).toEqual(secondNodes.array);
+    expect(first.graph.nodes.slice(0, 12).every((center) => nearbyCount(center) >= 6)).toBe(true);
+
+    first.dispose();
+    second.dispose();
+    high.dispose();
+  });
+
   it("uses independently faded observatory layers and shared parallax behavior", () => {
     const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 9800 } });
     const particles = layer.root.getObjectByName("cosmic-web-particles");
@@ -509,17 +536,21 @@ describe("createCosmicWebLayer", () => {
   });
 
   it("honors reduced motion and fails closed for malformed presence and parallax", () => {
-    const reduced = createCosmicWeb({ reducedMotion: true });
-    const layer = createCosmicWeb();
+    const reduced = createCosmicWeb({
+      quality: { tier: "high", cosmicWebPoints: 9800 },
+      reducedMotion: true
+    });
+    const economy = createCosmicWeb();
 
     expect(reduced.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
-    layer.setPresence("visible");
-    expect(layer.root.visible).toBe(false);
-    expect(layer.updateParallax({ x: 1, y: "-1" })).toEqual({ x: 0, y: 0 });
-    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
+    expect(economy.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+    economy.setPresence("visible");
+    expect(economy.root.visible).toBe(false);
+    expect(economy.updateParallax({ x: 1, y: "-1" })).toEqual({ x: 0, y: 0 });
+    expect(economy.updateParallax(null)).toEqual({ x: 0, y: 0 });
 
     reduced.dispose();
-    layer.dispose();
+    economy.dispose();
   });
 
   it.each([

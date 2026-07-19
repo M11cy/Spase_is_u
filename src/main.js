@@ -1454,14 +1454,13 @@ function startJourney() {
 
 function onPointerMove(event) {
   if (!journeyStarted) return;
-  milkyWayLayer.updateParallax({
+  const pointer = Object.freeze({
     x: (event.clientX / window.innerWidth) * 2 - 1,
     y: (event.clientY / window.innerHeight) * -2 + 1
   });
-  localGroupLayer.updateParallax({
-    x: (event.clientX / window.innerWidth) * 2 - 1,
-    y: (event.clientY / window.innerHeight) * -2 + 1
-  });
+  milkyWayLayer.updateParallax(pointer);
+  localGroupLayer.updateParallax(pointer);
+  cosmicWebLayer.updateParallax(pointer);
   const annotation = sceneManager.hitTest({ clientX: event.clientX, clientY: event.clientY });
   hovered = annotation?.stage != null && currentStageState.layerPresence[annotation.stage] > 0.08
     ? annotation

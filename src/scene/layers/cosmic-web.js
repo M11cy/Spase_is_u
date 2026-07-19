@@ -8,6 +8,7 @@ import {
 const NODE_COUNT = 74;
 const VOLUME = Object.freeze({ width: 1320, height: 760, depth: 190, centerZ: -235 });
 const PALETTE = Object.freeze([0xffd477, 0xe278c8, 0xb397ff, 0x9dc7ff]);
+const NODE_POINTS_PER_TIER = Object.freeze({ high: 18, medium: 12, economy: 8 });
 const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
   "Group",
   "BufferGeometry",
@@ -167,18 +168,27 @@ const createParticles = (THREE, graph, glowTexture, count, seed) => {
   return particles;
 };
 
-const createNodes = (THREE, graph, glowTexture) => {
-  const positions = graph.nodes.flatMap((node) => node);
+const createNodes = (THREE, graph, glowTexture, quality, seed) => {
+  const random = createSeededRandom(forkSeed(seed, 0x1bf5a9d3));
+  const pointsPerNode = NODE_POINTS_PER_TIER[quality.tier];
+  const positions = [];
   const colors = [];
-  graph.nodes.forEach((node, index) => {
-    const color = new THREE.Color(PALETTE[index % PALETTE.length]);
-    pushColor(colors, color, 0.88 + (index % 3) * 0.06);
+  graph.nodes.forEach((node, nodeIndex) => {
+    const color = new THREE.Color(PALETTE[nodeIndex % PALETTE.length]);
+    for (let pointIndex = 0; pointIndex < pointsPerNode; pointIndex += 1) {
+      const spread = pointIndex === 0 ? 0 : 3.2 + random() * 4.8;
+      const offsetX = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread;
+      const offsetY = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread;
+      const offsetZ = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread * 0.62;
+      positions.push(node[0] + offsetX, node[1] + offsetY, node[2] + offsetZ);
+      pushColor(colors, color, 0.3 + random() * 0.42);
+    }
   });
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 8.4,
+    size: 4.1,
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.62,
     alphaTest: 0.01,
     depthWrite: false,
     depthTest: true,
@@ -188,6 +198,7 @@ const createNodes = (THREE, graph, glowTexture) => {
   const nodes = new THREE.Points(createGeometry(THREE, positions, colors), material);
   nodes.name = "cosmic-web-nodes";
   nodes.renderOrder = 6;
+  nodes.userData.cluster = Object.freeze({ pointsPerNode, seed });
   return nodes;
 };
 
@@ -244,7 +255,7 @@ export const createCosmicWebLayer = (input) => {
   });
   const filaments = createFilaments(THREE, graph);
   const particles = createParticles(THREE, graph, glowTexture, quality.cosmicWebPoints, seed);
-  const nodes = createNodes(THREE, graph, glowTexture);
+  const nodes = createNodes(THREE, graph, glowTexture, quality, seed);
   const depth = createDepthField(THREE, glowTexture, quality.cosmicWebPoints, seed);
   const fadedObjects = Object.freeze([depth, filaments, particles, nodes]);
   fadedObjects.forEach((object) => {
