@@ -600,12 +600,8 @@ const satelliteMap = createSatelliteMap({
 const visualObjects = OBJECTS.map(withBaseAsset);
 const objects = visualObjects.filter((object) => "radius" in object);
 const regionAnnotations = visualObjects.filter((object) => !("radius" in object));
-const {
-  galaxy: rawGalaxyAnnotationSources,
-  localGroup: rawGroupGalaxyAnnotationSources
-} = ANNOTATIONS;
+const { galaxy: rawGalaxyAnnotationSources } = ANNOTATIONS;
 const galaxyAnnotationSources = rawGalaxyAnnotationSources.map(withBaseAsset);
-const groupGalaxyAnnotationSources = rawGroupGalaxyAnnotationSources.map(withBaseAsset);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -662,9 +658,6 @@ const earthTextureRoutes = Object.freeze({
 const solarTextureSources = Object.freeze([
   ...new Set(solarPlanets.flatMap(({ image }) => image ? [image] : []))
 ]);
-const localGroupTextureSources = Object.freeze([
-  ...new Set(groupGalaxyAnnotationSources.flatMap(({ image }) => image ? [image] : []))
-]);
 const introController = createIntroController({
   root: introLayer,
   startButton: startJourneyButton,
@@ -684,15 +677,6 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 });
 const solarTextures = new Map(solarTextureSources.map((url, index) => (
   [url, solarTextureResources[index]]
-)));
-const localGroupTextureResources = await Promise.all(
-  localGroupTextureSources.map((url) => textureStore.load(url, 0x10152a))
-);
-localGroupTextureResources.forEach(({ texture }) => {
-  texture.anisotropy = maxAnisotropy;
-});
-const localGroupTextures = new Map(localGroupTextureSources.map((url, index) => (
-  [url, localGroupTextureResources[index]]
 )));
 const glowDiscTexture = createGlowDiscTexture();
 solarTextures.set("glow", glowDiscTexture);
@@ -1242,15 +1226,11 @@ group.add(milkyWayLayer.root);
 
 const localGroupLayer = createLocalGroupLayer({
   THREE,
-  annotations: groupGalaxyAnnotationSources,
   quality,
-  stage: STAGE_INDEX["local-group"],
-  textureFor: (source) => localGroupTextures.get(source.image)?.texture ?? null,
   glowTexture: glowDiscTexture,
-  createMarker: createGalaxyMarker,
-  reducedMotion
+  reducedMotion,
+  seed: 20610422
 });
-const groupGalaxyAnnotations = Object.freeze(localGroupLayer.interactive.map((marker) => marker.userData.annotation));
 group.add(localGroupLayer.root);
 
 const cosmicWebLayer = createCosmicWebLayer({
@@ -1328,7 +1308,6 @@ const labelTargets = [
   earthAnnotation,
   ...solarAnnotations,
   ...galaxyAnnotations,
-  ...groupGalaxyAnnotations,
   ...regionAnnotations.filter((annotation) => ![
     STAGE_INDEX["milky-way"],
     STAGE_INDEX["local-group"],
@@ -1664,7 +1643,10 @@ function onClick(event) {
   }
 
   const stageObject =
-    regionAnnotations.find((object) => object.stage === currentStageState.activeStage) ??
+    regionAnnotations.find((object) => (
+      object.stage !== STAGE_INDEX["local-group"]
+      && object.stage === currentStageState.activeStage
+    )) ??
     (currentStageState.activeStage === earthAnnotation.stage ? earthAnnotation : null);
   if (stageObject && currentStageState.activeStage > STAGE_INDEX.place) {
     openPanel(stageObject);
@@ -1781,7 +1763,6 @@ function disposeExperience() {
   sceneManager.dispose();
   earthTextureResource.release();
   earthCloudResource.release();
-  localGroupTextureResources.forEach((resource) => resource.release());
   textureStore.dispose();
   glowDiscTexture.dispose();
 }

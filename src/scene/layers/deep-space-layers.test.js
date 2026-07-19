@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { createQualityProfile } from "../../core/quality-profile.js";
@@ -331,269 +332,196 @@ describe("createMilkyWayLayer", () => {
   });
 });
 
-const localGroupAnnotations = Object.freeze([
-  Object.freeze({ id: "group-milky-way", stage: 4, position: [-34, 4, -142], size: 18, image: "/mw.jpg", color: 0xdde8ff }),
-  Object.freeze({ id: "group-andromeda", stage: 4, position: [56, 13, -160], size: 24, image: "/a.jpg", color: 0xffffff }),
-  Object.freeze({ id: "group-triangulum", stage: 4, position: [20, -26, -180], size: 11, image: "/m33.jpg", color: 0xcddcff }),
-  Object.freeze({ id: "group-lmc", stage: 4, position: [-55, -10, -130], size: 10, color: 0xb9ccff }),
-  Object.freeze({ id: "group-m32", stage: 4, position: [72, 18, -166], size: 8, color: 0xe7edff })
-]);
-
 const createLocalGroup = (overrides = {}) => createLocalGroupLayer({
   THREE,
-  annotations: localGroupAnnotations,
-  quality: { tier: "high" },
-  stage: 4,
+  quality: { tier: "high", localGroupGalaxies: 260 },
   glowTexture: null,
-  textureFor: () => null,
-  createMarker: () => new THREE.Sprite(),
   reducedMotion: false,
+  seed: 20610422,
   ...overrides
 });
 
 describe("createLocalGroupLayer", () => {
-  it("creates named galaxies with distinct depth and aspect", () => {
-    const layer = createLocalGroup();
-    const galaxies = localGroupAnnotations.map(({ id }) => layer.root.getObjectByName(id));
+  it.each([
+    ["high", 260],
+    ["medium", 160],
+    ["economy", 90]
+  ])("renders a deterministic %s deep field without annotations", (tier, count) => {
+    const input = { quality: { tier, localGroupGalaxies: count }, seed: 20610422 };
+    const first = createLocalGroup(input);
+    const second = createLocalGroup(input);
 
-    expect(galaxies.every(Boolean)).toBe(true);
-    expect(new Set(galaxies.map(({ position }) => position.z)).size).toBe(5);
-    expect(galaxies[1].scale.x).not.toBe(galaxies[1].scale.y);
-
-    layer.dispose();
-  });
-
-  it("renders textured discs, cores, and star clouds with deterministic profile-specific form", () => {
-    const texture = new THREE.Texture();
-    const first = createLocalGroup({ textureFor: () => texture });
-    const second = createLocalGroup({ textureFor: () => texture });
-    const andromeda = first.root.getObjectByName("group-andromeda");
-    const lmc = first.root.getObjectByName("group-lmc");
-    const m32 = first.root.getObjectByName("group-m32");
-    const disc = andromeda.getObjectByName("group-andromeda-disc");
-    const stars = andromeda.getObjectByName("group-andromeda-stars");
-
-    expect(andromeda.userData.profile).toBe("spiral");
-    expect(lmc.userData.profile).toBe("irregular");
-    expect(m32.userData.profile).toBe("elliptical");
-    expect(disc.material.map).toBe(texture);
-    expect(andromeda.getObjectByName("group-andromeda-core")).toBeTruthy();
-    expect(stars.isPoints).toBe(true);
-    expect(stars.geometry.getAttribute("position").array)
-      .toEqual(second.root.getObjectByName("group-andromeda-stars").geometry.getAttribute("position").array);
-    expect(andromeda.rotation.z).not.toBe(lmc.rotation.z);
+    expect(first.catalog).toHaveLength(count);
+    expect(first.catalog).toEqual(second.catalog);
+    expect(new Set(first.catalog.map(({ profile }) => profile)))
+      .toEqual(new Set(["spiral", "elliptical", "irregular"]));
+    expect(first.interactive).toEqual([]);
+    expect(Object.isFrozen(first.interactive)).toBe(true);
+    expect(first.root.getObjectByName("local-group-markers")).toBeUndefined();
 
     first.dispose();
     second.dispose();
   });
 
-  it("keeps annotations interactive and applies presence and high-quality parallax", () => {
+  it("publishes deeply frozen catalog records with the documented metadata only", () => {
+    const layer = createLocalGroup();
+    const [record] = layer.catalog;
+
+    expect(Object.isFrozen(layer.catalog)).toBe(true);
+    expect(Object.isFrozen(record)).toBe(true);
+    expect(Object.isFrozen(record.position)).toBe(true);
+    expect(Object.keys(record)).toEqual([
+      "id",
+      "profile",
+      "position",
+      "size",
+      "rotation",
+      "temperature"
+    ]);
+    expect(record.id).toBe("deep-field-0");
+    expect(record.position).toHaveLength(3);
+    expect(record.position.every(Number.isFinite)).toBe(true);
+    expect(record.size).toBeGreaterThan(0);
+    expect(record.rotation).toBeGreaterThanOrEqual(0);
+    expect(record.rotation).toBeLessThan(Math.PI * 2);
+    expect(["warm", "cool"]).toContain(record.temperature);
+
+    layer.dispose();
+  });
+
+  it("batches every galaxy into one procedural shader point cloud per profile", () => {
     const layer = createLocalGroup();
 
-    expect(layer.interactive).toHaveLength(localGroupAnnotations.length);
-    expect(layer.interactive[0].userData.annotation).toMatchObject(localGroupAnnotations[0]);
-    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    ["spiral", "elliptical", "irregular"].forEach((profile) => {
+      const batch = layer.root.getObjectByName(`local-group-${profile}-batch`);
+      const expectedCount = layer.catalog.filter((record) => record.profile === profile).length;
+
+      expect(batch).toBeInstanceOf(THREE.Points);
+      expect(batch.geometry.getAttribute("position").count).toBe(expectedCount);
+      expect(batch.geometry.getAttribute("aSize").count).toBe(expectedCount);
+      expect(batch.geometry.getAttribute("aRotation").count).toBe(expectedCount);
+      expect(batch.geometry.getAttribute("aColor").count).toBe(expectedCount);
+      expect(batch.material).toBeInstanceOf(THREE.ShaderMaterial);
+      expect(batch.material.defines[`PROFILE_${profile.toUpperCase()}`]).toBe(1);
+      expect(batch.material.blending).toBe(THREE.AdditiveBlending);
+      expect(batch.material.depthWrite).toBe(false);
+      expect(batch.material.toneMapped).toBe(false);
+      expect(batch.material.uniforms.uIntensity.value).toBeGreaterThanOrEqual(1);
+    });
+
+    layer.dispose();
+  });
+
+  it("uses portable ascending smoothstep edges in every galaxy fragment shader", () => {
+    const layer = createLocalGroup();
+    const smoothstepEdges = layer.root.children.flatMap(({ material }) => (
+      [...material.fragmentShader.matchAll(/smoothstep\((\d+\.\d+),\s*(\d+\.\d+)/g)]
+        .map(([, first, second]) => [Number(first), Number(second)])
+    ));
+
+    expect(smoothstepEdges.length).toBeGreaterThan(0);
+    expect(smoothstepEdges.every(([edge0, edge1]) => edge0 < edge1)).toBe(true);
+
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", 14],
+    ["medium", 11],
+    ["economy", 8]
+  ])("isolates the %s deep field to exactly %i hero cores on bloom", (tier, heroCount) => {
+    const layer = createLocalGroup({ quality: { tier } });
+    const heroCores = layer.root.getObjectByName("local-group-hero-cores");
+    const bloomLayer = new THREE.Layers();
+    const baseLayer = new THREE.Layers();
+    bloomLayer.set(BLOOM_SCENE_LAYER);
+    baseLayer.set(0);
+
+    expect(layer.catalog.filter(({ size }) => size >= 18)).toHaveLength(heroCount);
+    expect(heroCores.geometry.getAttribute("position").count).toBe(heroCount);
+    expect(heroCores.layers.test(bloomLayer)).toBe(true);
+    expect(heroCores.layers.test(baseLayer)).toBe(true);
+    expect(layer.root.layers.test(bloomLayer)).toBe(false);
+    ["spiral", "elliptical", "irregular"].forEach((profile) => {
+      expect(layer.root.getObjectByName(`local-group-${profile}-batch`).layers.test(bloomLayer))
+        .toBe(false);
+    });
+
+    layer.dispose();
+  });
+
+  it("uses several depth clusters while preserving broad empty regions", () => {
+    const layer = createLocalGroup();
+    const occupiedCells = new Set(layer.catalog.map(({ position: [x, y] }) => (
+      `${Math.floor((x + 140) / 35)}:${Math.floor((y + 90) / 30)}`
+    )));
+    const depthBands = new Set(layer.catalog.map(({ position: [, , z] }) => Math.floor((-z - 110) / 55)));
+
+    expect(occupiedCells.size).toBeGreaterThanOrEqual(8);
+    expect(occupiedCells.size).toBeLessThanOrEqual(24);
+    expect(depthBands.size).toBeGreaterThanOrEqual(5);
+    expect(layer.catalog.some(({ position: [x, y] }) => Math.abs(x) < 8 && Math.abs(y) < 8))
+      .toBe(false);
+
+    layer.dispose();
+  });
+
+  it("applies clamped presence and high-quality parallax without mutating catalog metadata", () => {
+    const layer = createLocalGroup();
+    const catalogSnapshot = structuredClone(layer.catalog);
+
     layer.setPresence(0.5);
     expect(layer.root.visible).toBe(true);
-    expect(layer.root.getObjectByName("group-andromeda-disc").material.opacity).toBeGreaterThan(0);
+    expect(layer.root.getObjectByName("local-group-spiral-batch").material.uniforms.uPresence.value)
+      .toBe(0.5);
+    expect(layer.root.getObjectByName("local-group-hero-cores").material.uniforms.uPresence.value)
+      .toBe(0.5);
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    layer.setPresence(Number.NaN);
+    expect(layer.root.visible).toBe(false);
+    expect(layer.catalog).toEqual(catalogSnapshot);
 
     layer.dispose();
   });
 
-  it("fails closed for invalid inputs, honors reduced motion, and disposes once", () => {
+  it("honors reduced motion and disposes every batch exactly once", () => {
+    const layer = createLocalGroup({ reducedMotion: true });
+    const resources = layer.root.children.flatMap((child) => [child.geometry, child.material]);
+    const disposeSpies = resources.map((resource) => vi.spyOn(resource, "dispose"));
+
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+
+    layer.dispose();
+    layer.dispose();
+
+    disposeSpies.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+    expect(layer.root.children).toHaveLength(0);
+  });
+
+  it("validates the rendering boundary and falls back to the tier galaxy budget", () => {
+    expect(() => createLocalGroup({ THREE: null })).toThrow(TypeError);
     expect(() => createLocalGroup({ quality: null })).toThrow(TypeError);
-    expect(() => createLocalGroup({ textureFor: null })).toThrow(TypeError);
-    const malformedLayer = createLocalGroup({
-      annotations: [null, { id: "bad", position: [1, 2] }],
-      reducedMotion: true
-    });
-    const layer = createLocalGroup();
-    const marker = layer.root.getObjectByName("group-milky-way-marker");
-    const dispose = vi.spyOn(marker.material, "dispose");
+    expect(() => createLocalGroup({ quality: { tier: "ultra" } })).toThrow(TypeError);
+    expect(() => createLocalGroup({ reducedMotion: null })).toThrow(TypeError);
+    expect(() => createLocalGroup({ seed: 1.5 })).toThrow(TypeError);
 
-    expect(malformedLayer.interactive).toHaveLength(0);
-    expect(malformedLayer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
-    malformedLayer.dispose();
-    layer.dispose();
-    layer.dispose();
-    expect(dispose).toHaveBeenCalledOnce();
-  });
-
-  it("skips duplicate galaxy identities without mutating frozen annotation sources", () => {
-    const source = Object.freeze({
-      id: "group-andromeda",
-      stage: 4,
-      position: Object.freeze([56, 13, -160]),
-      size: 24,
-      color: 0xffffff
-    });
-    const annotations = Object.freeze([source, source, null]);
-    const layer = createLocalGroup({ annotations });
-
-    expect(layer.interactive).toHaveLength(1);
-    expect(layer.root.children.filter(({ name }) => name === source.id)).toHaveLength(1);
-    expect(source).toEqual({
-      id: "group-andromeda",
-      stage: 4,
-      position: [56, 13, -160],
-      size: 24,
-      color: 0xffffff
-    });
-
+    const layer = createLocalGroup({ quality: { tier: "medium" } });
+    expect(layer.catalog).toHaveLength(160);
     layer.dispose();
   });
+});
 
-  it("keeps markers independent of visual scale and requires the configured stage", () => {
-    const layer = createLocalGroup({
-      createMarker: () => {
-        const marker = new THREE.Sprite();
-        marker.scale.set(12, 12, 1);
-        return marker;
-      }
-    });
-    const marker = layer.root.getObjectByName("group-andromeda-marker");
-    const worldScale = new THREE.Vector3();
-    layer.root.updateMatrixWorld(true);
-    marker.getWorldScale(worldScale);
-    const wrongStage = createLocalGroup({
-      annotations: [{ ...localGroupAnnotations[0], stage: 5 }]
-    });
+describe("Local Group main integration", () => {
+  it("does not load bitmap galaxies or activate Local Group annotations", () => {
+    const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
+    const layerSetup = mainSource.match(
+      /const localGroupLayer = createLocalGroupLayer\(\{([\s\S]*?)\n\}\);/
+    )?.[1] ?? "";
 
-    expect(worldScale.x).toBeCloseTo(12);
-    expect(worldScale.y).toBeCloseTo(12);
-    expect(wrongStage.interactive).toHaveLength(0);
-
-    layer.dispose();
-    wrongStage.dispose();
-  });
-
-  it("uses oriented texture planes and resolves colliding source depths deterministically", () => {
-    const duplicateDepth = [
-      { ...localGroupAnnotations[0], position: [-34, 4, -142] },
-      { ...localGroupAnnotations[1], position: [56, 13, -142] }
-    ];
-    const first = createLocalGroup({ annotations: duplicateDepth });
-    const second = createLocalGroup({ annotations: duplicateDepth });
-    const milkyWay = first.root.getObjectByName("group-milky-way");
-    const andromeda = first.root.getObjectByName("group-andromeda");
-    const disc = andromeda.getObjectByName("group-andromeda-disc");
-
-    expect(disc.isMesh).toBe(true);
-    expect(disc.material.map).not.toBeNull();
-    expect(milkyWay.position.z).not.toBe(andromeda.position.z);
-    expect(andromeda.position.z).toBe(second.root.getObjectByName("group-andromeda").position.z);
-
-    first.dispose();
-    second.dispose();
-  });
-
-  it("uses restrained additive textured discs so opaque RGB image backgrounds cannot render as black panels", () => {
-    const opaqueRgbTexture = new THREE.DataTexture(
-      new Uint8Array([0, 0, 0, 255]),
-      1,
-      1,
-      THREE.RGBAFormat
-    );
-    const layer = createLocalGroup({ textureFor: () => opaqueRgbTexture });
-    const disc = layer.root.getObjectByName("group-andromeda-disc");
-
-    expect(disc.material.map).toBe(opaqueRgbTexture);
-    expect(disc.material.blending).toBe(THREE.AdditiveBlending);
-    expect(disc.material.transparent).toBe(true);
-    expect(disc.material.depthWrite).toBe(false);
-    expect(disc.material.opacity).toBeLessThanOrEqual(0.7);
-
-    layer.dispose();
-  });
-
-  it("feathers every source texture with a soft radial alpha mask and disposes the mask once", () => {
-    const sourceTexture = new THREE.Texture();
-    const layer = createLocalGroup({ textureFor: () => sourceTexture });
-    const disc = layer.root.getObjectByName("group-andromeda-disc");
-    const alphaMask = disc.material.alphaMap;
-
-    expect(alphaMask).toBeInstanceOf(THREE.DataTexture);
-    expect(alphaMask).not.toBe(sourceTexture);
-    expect(alphaMask.image.width).toBeGreaterThanOrEqual(32);
-    expect(alphaMask.image.height).toBe(alphaMask.image.width);
-
-    const pixels = alphaMask.image.data;
-    const resolution = alphaMask.image.width;
-    const channelAt = (x, y) => pixels[(y * resolution + x) * 4 + 1];
-    expect(channelAt(0, 0)).toBe(0);
-    expect(channelAt(resolution - 1, resolution - 1)).toBe(0);
-    expect(channelAt(Math.floor(resolution / 2), Math.floor(resolution / 2))).toBeGreaterThan(245);
-    expect(channelAt(Math.floor(resolution * 0.82), Math.floor(resolution / 2))).toBeGreaterThan(0);
-    expect(channelAt(Math.floor(resolution * 0.82), Math.floor(resolution / 2))).toBeLessThan(245);
-
-    const dispose = vi.spyOn(alphaMask, "dispose");
-    layer.dispose();
-    layer.dispose();
-
-    expect(dispose).toHaveBeenCalledOnce();
-  });
-
-  it("forms arm bands and outward radial progression for spirals while irregular galaxies are asymmetric and clumped", () => {
-    const layer = createLocalGroup();
-    const spiralPositions = layer.root.getObjectByName("group-andromeda-stars").geometry.getAttribute("position").array;
-    const irregularPositions = layer.root.getObjectByName("group-lmc-stars").geometry.getAttribute("position").array;
-    const armCount = 4;
-    const radialDistance = (positions, index) => Math.hypot(positions[index * 3], positions[index * 3 + 1]);
-    const firstArmAngles = Array.from({ length: armCount }, (_, index) => (
-      Math.atan2(spiralPositions[index * 3 + 1], spiralPositions[index * 3])
-    )).sort((left, right) => left - right);
-    const gaps = firstArmAngles.map((angle, index) => (
-      (firstArmAngles[(index + 1) % armCount] - angle + Math.PI * 2) % (Math.PI * 2)
-    ));
-    const irregularMeanX = Array.from({ length: irregularPositions.length / 3 }, (_, index) => (
-      irregularPositions[index * 3]
-    )).reduce((sum, value) => sum + value, 0) / (irregularPositions.length / 3);
-
-    expect(gaps.every((gap) => gap > 1 && gap < 2.1)).toBe(true);
-    expect(radialDistance(spiralPositions, spiralPositions.length / 3 - armCount)).toBeGreaterThan(
-      radialDistance(spiralPositions, 0) * 4
-    );
-    expect(irregularMeanX).toBeGreaterThan(0.8);
-
-    layer.dispose();
-  });
-
-  it("scales each visible galaxy core from its own profile and size", () => {
-    const layer = createLocalGroup();
-    const andromedaCore = layer.root.getObjectByName("group-andromeda-core");
-    const lmcCore = layer.root.getObjectByName("group-lmc-core");
-
-    expect(andromedaCore.scale.x).toBeGreaterThan(6);
-    expect(andromedaCore.scale.x).toBeGreaterThan(lmcCore.scale.x);
-
-    layer.dispose();
-  });
-
-  it("forms M32 as a deterministic, centered, smooth anisotropic ellipsoid distinct from spiral and clumped profiles", () => {
-    const first = createLocalGroup();
-    const second = createLocalGroup();
-    const positions = first.root.getObjectByName("group-m32-stars").geometry.getAttribute("position").array;
-    const pointCount = positions.length / 3;
-    const m32Size = localGroupAnnotations.find(({ id }) => id === "group-m32").size;
-    const horizontalRadius = m32Size * 0.78;
-    const verticalRadius = m32Size * 0.86 * 0.4;
-    const coordinate = (axis) => Array.from({ length: pointCount }, (_, index) => positions[index * 3 + axis]);
-    const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
-    const deviation = (values) => Math.sqrt(mean(values.map((value) => (value - mean(values)) ** 2)));
-    const normalizedRadii = Array.from({ length: pointCount }, (_, index) => {
-      const x = positions[index * 3] / horizontalRadius;
-      const y = positions[index * 3 + 1] / verticalRadius;
-      return Math.hypot(x, y);
-    });
-
-    expect(Math.abs(mean(coordinate(0)))).toBeLessThan(0.65);
-    expect(Math.abs(mean(coordinate(1)))).toBeLessThan(0.35);
-    expect(deviation(coordinate(0))).toBeGreaterThan(deviation(coordinate(1)) * 1.7);
-    expect(normalizedRadii.every((radius) => radius <= 1.001)).toBe(true);
-    expect(positions).toEqual(second.root.getObjectByName("group-m32-stars").geometry.getAttribute("position").array);
-
-    first.dispose();
-    second.dispose();
+    expect(mainSource).not.toMatch(/groupGalaxyAnnotations|localGroupTexture(?:Sources|Resources|s)/);
+    expect(layerSetup).toContain("seed: 20610422");
+    expect(layerSetup).not.toMatch(/annotations|textureFor|createMarker/);
+    expect(mainSource).toContain('object.stage !== STAGE_INDEX["local-group"]');
   });
 });
 
