@@ -22,6 +22,13 @@ const copyVector = (values, label) => {
   return Object.freeze(vector);
 };
 
+const requireStageIndex = (stage, label) => {
+  if (!Number.isInteger(stage) || stage < 0) {
+    throw new TypeError(`${label} must be a non-negative integer`);
+  }
+  return stage;
+};
+
 const normalize = (vector) => {
   const length = Math.hypot(...vector);
   if (length === 0) return Object.freeze([0, 0, 1]);
@@ -59,9 +66,9 @@ const createUnavailableJourney = (journey) => Object.freeze({
   globePresence: 1
 });
 
-const withEarthPresence = (stageState, presence) => {
+const withEarthPresence = (stageState, presence, earthStage) => {
   const layerPresence = [...stageState.layerPresence];
-  layerPresence[1] = presence;
+  layerPresence[earthStage] = presence;
   return Object.freeze({
     ...stageState,
     layerPresence: Object.freeze(layerPresence)
@@ -74,6 +81,7 @@ export const createEarthExperienceController = ({
   orbitPose,
   earthPosition,
   radius,
+  earthStage,
   initialLocation = FALLBACK_LOCATION
 }) => {
   if (!map?.setLocation || !map?.setJourneyProgress || !map?.dispose) {
@@ -82,6 +90,7 @@ export const createEarthExperienceController = ({
   if (!earthLayer?.setFocus) {
     throw new TypeError("An Earth layer with setFocus is required");
   }
+  const fixedEarthStage = requireStageIndex(earthStage, "Earth stage");
 
   const fixedEarthPosition = copyVector(earthPosition, "Earth position");
   const fixedOrbitPose = Object.freeze({
@@ -119,7 +128,7 @@ export const createEarthExperienceController = ({
     if (disposed) return null;
     if (!stageState?.layerPresence) throw new TypeError("A stage state is required");
 
-    if (exactStage > 1) {
+    if (exactStage > fixedEarthStage) {
       return Object.freeze({
         journey: null,
         cameraPose: null,
@@ -141,8 +150,8 @@ export const createEarthExperienceController = ({
       focusDirectionForPose({ pose: cameraPose, earthPosition: fixedEarthPosition, radius: fixedRadius }),
       cameraUp
     );
-    const nextStageState = exactStage < 1
-      ? withEarthPresence(stageState, journey.globePresence)
+    const nextStageState = exactStage < fixedEarthStage
+      ? withEarthPresence(stageState, journey.globePresence, fixedEarthStage)
       : stageState;
 
     map.setJourneyProgress(journey);

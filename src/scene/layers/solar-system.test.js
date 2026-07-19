@@ -4,6 +4,10 @@ import { STAGE_INDEX } from "../../data/cosmos.js";
 import { createSolarSystemLayer } from "./solar-system.js";
 
 describe("createSolarSystemLayer", () => {
+  it.each([undefined, -1, 1.5, Number.NaN])("rejects invalid stage %s", (stage) => {
+    expect(() => createSolarSystemLayer({ THREE, stage, planets: [] })).toThrow(TypeError);
+  });
+
   it("assigns the caller-provided route stage to each planet annotation", () => {
     const layer = createSolarSystemLayer({
       THREE,

@@ -1425,6 +1425,7 @@ const earthExperience = createEarthExperienceController({
   orbitPose: initialOrbitPose,
   earthPosition,
   radius: 14,
+  earthStage: STAGE_INDEX.earth,
   initialLocation: DEFAULT_LOCATION
 });
 const locationController = createLocationController({

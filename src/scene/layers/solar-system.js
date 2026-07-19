@@ -9,6 +9,13 @@ const textureEntryFor = (textures, planet) => (
 
 const textureFrom = (entry) => entry?.texture ?? (entry?.isTexture ? entry : null);
 
+const requireStageIndex = (stage) => {
+  if (!Number.isInteger(stage) || stage < 0) {
+    throw new TypeError("Solar system stage must be a non-negative integer");
+  }
+  return stage;
+};
+
 const createPlanetAnnotation = (planet, mesh, stage) => Object.freeze({
   id: `solar-${planet.name.toLowerCase()}`,
   title: planet.title,
@@ -29,6 +36,7 @@ export const createSolarSystemLayer = ({
   quality = {},
   composition = {}
 }) => {
+  const fixedStage = requireStageIndex(stage);
   const root = new THREE.Group();
   const compactComposition = composition.compact
     ?? quality.compactNearSpace
@@ -129,7 +137,7 @@ export const createSolarSystemLayer = ({
       0,
       Math.sin(planet.angle) * displayRadius
     );
-    mesh.userData.annotation = createPlanetAnnotation(planet, mesh, stage);
+    mesh.userData.annotation = createPlanetAnnotation(planet, mesh, fixedStage);
     root.add(mesh);
 
     if (planet.name === "Saturn") {
