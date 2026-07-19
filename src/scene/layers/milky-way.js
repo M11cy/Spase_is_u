@@ -9,6 +9,7 @@ const GALAXY_SEED = 19770314;
 const ARM_COUNT = 4;
 const ROOT_DEPTH = -80;
 const MIN_GALAXY_POINTS = 1;
+const DISC_DEPTH_SCALE = 0.36;
 
 const isPositiveInteger = (value) => Number.isInteger(value) && value >= MIN_GALAXY_POINTS;
 
@@ -42,7 +43,7 @@ const createArmPoint = (random, index, count, offset = 0) => {
   return Object.freeze({
     x: Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * armSpread,
     y: thickness + offset,
-    z: Math.sin(angle) * radius * 0.36 + Math.sin(angle + Math.PI / 2) * armSpread * 0.35
+    z: Math.sin(angle) * radius * DISC_DEPTH_SCALE + Math.sin(angle + Math.PI / 2) * armSpread * 0.35
   });
 };
 
@@ -184,6 +185,12 @@ export const createMilkyWayLayer = (input) => {
   root.name = "milky-way-layer";
   root.position.set(0, 0, ROOT_DEPTH);
   root.visible = false;
+  root.userData.armStructure = Object.freeze({
+    armCount: ARM_COUNT,
+    discDepthScale: DISC_DEPTH_SCALE,
+    pattern: "logarithmic",
+    seed: GALAXY_SEED
+  });
 
   const stars = createStarField(THREE, glowTexture, quality.galaxyPoints);
   const dust = createDustField(THREE, glowTexture, Math.max(64, Math.round(quality.galaxyPoints * 0.58)));

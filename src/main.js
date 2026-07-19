@@ -1549,8 +1549,6 @@ function updateStage() {
 
   updateLabels(layerOpacities);
 
-  const galaxyOpacity = layerOpacities[STAGE_INDEX["milky-way"]];
-  milkyWayLayer.setPresence(galaxyOpacity);
   const localGroupOpacity = layerOpacities[STAGE_INDEX["local-group"]];
   localGroup.visible = localGroupOpacity > 0.03;
   localGroup.children.forEach((dot) => {

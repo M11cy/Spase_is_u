@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMilkyWayLayer } from "./milky-way.js";
 
 const createLayer = (overrides = {}) => createMilkyWayLayer({
@@ -68,6 +68,34 @@ describe("createMilkyWayLayer", () => {
     second.dispose();
   });
 
+  it("forms four separated logarithmic arm bands with outward radial progression", () => {
+    const layer = createLayer();
+    const positions = layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array;
+    const { armCount, discDepthScale, pattern } = layer.root.userData.armStructure;
+    const pointCount = positions.length / 3;
+    const radialDistance = (index) => {
+      const offset = index * 3;
+      return Math.hypot(positions[offset], positions[offset + 2] / discDepthScale);
+    };
+    const firstAngles = Array.from({ length: armCount }, (_, arm) => {
+      const offset = arm * 3;
+      return Math.atan2(positions[offset + 2] / discDepthScale, positions[offset]);
+    }).sort((left, right) => left - right);
+    const angularGaps = firstAngles.map((angle, index) => (
+      (firstAngles[(index + 1) % armCount] - angle + Math.PI * 2) % (Math.PI * 2)
+    ));
+
+    expect(Object.isFrozen(layer.root.userData.armStructure)).toBe(true);
+    expect(pattern).toBe("logarithmic");
+    expect(armCount).toBe(4);
+    expect(angularGaps.every((gap) => gap > 1 && gap < 2.1)).toBe(true);
+    expect(Array.from({ length: armCount }, (_, arm) => (
+      radialDistance(pointCount - armCount + arm) > radialDistance(arm) * 8
+    )).every(Boolean)).toBe(true);
+
+    layer.dispose();
+  });
+
   it.each([
     undefined,
     null,
@@ -76,6 +104,39 @@ describe("createMilkyWayLayer", () => {
     { tier: "high", galaxyPoints: 1.5 }
   ])("rejects invalid quality input %j", (quality) => {
     expect(() => createLayer({ quality })).toThrow(TypeError);
+  });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    { Group: THREE.Group },
+    { BufferGeometry: THREE.BufferGeometry }
+  ])("rejects an incomplete THREE namespace %j", (incompleteThree) => {
+    expect(() => createLayer({ THREE: incompleteThree })).toThrow(TypeError);
+  });
+
+  it.each([undefined, null, {}, "annotations"])("rejects invalid annotations %j", (annotations) => {
+    expect(() => createLayer({ annotations })).toThrow(TypeError);
+  });
+
+  it.each([undefined, null, "marker"])("rejects invalid marker factory %j", (createMarker) => {
+    expect(() => createLayer({ createMarker })).toThrow(TypeError);
+  });
+
+  it.each([undefined, null, "false"])("rejects invalid reduced-motion preference %j", (reducedMotion) => {
+    expect(() => createLayer({ reducedMotion })).toThrow(TypeError);
+  });
+
+  it("fails closed by skipping malformed annotations and marker results", () => {
+    const layer = createLayer({
+      annotations: [null, { position: [0, 0] }, { position: [0, 0, -80] }],
+      createMarker: () => null
+    });
+
+    expect(layer.interactive).toHaveLength(0);
+
+    layer.dispose();
   });
 
   it("fails closed for invalid presence and parallax input", () => {
@@ -87,5 +148,18 @@ describe("createMilkyWayLayer", () => {
     expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
 
     layer.dispose();
+  });
+
+  it("disposes the resource tree only once", () => {
+    const layer = createLayer();
+    const stars = layer.root.getObjectByName("milky-way-stars");
+    const disposeGeometry = vi.spyOn(stars.geometry, "dispose");
+    const disposeMaterial = vi.spyOn(stars.material, "dispose");
+
+    layer.dispose();
+    layer.dispose();
+
+    expect(disposeGeometry).toHaveBeenCalledOnce();
+    expect(disposeMaterial).toHaveBeenCalledOnce();
   });
 });
