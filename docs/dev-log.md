@@ -259,3 +259,60 @@ status: in-progress
 - E2E: `5/5` за `1.7m`, включая честный маршрут, обновление desktop/mobile screenshots и геометрическую проверку safe region.
 - Security: `npm audit --audit-level=high` — `0` vulnerabilities; `git diff --check` — без ошибок.
 - Независимый code review: `Approved`, findings отсутствуют.
+
+## Обновление 2026-07-20 — luminous deep-space observatory
+
+Связанные документы: [[2026-07-19-deep-space-visual-overhaul-design]] и [[2026-07-19-deep-space-visual-overhaul]].
+
+> [!success] Интеграция завершена
+> Единственный `createDeepSpacePostprocessing` adapter подключён к `createScene`; `sceneManager.render()` остаётся единственным frame-level render-вызовом. Renderer использует `SRGBColorSpace`, `ACESFilmicToneMapping` и общую экспозицию `1.34`.
+
+### RED → GREEN
+
+- Integration RED: честный Playwright-маршрут прошёл Galaxy и упал на тёмном Local Group с `luminousRatio 0.014755 < 0.015` до подключения pipeline.
+- Local Group visual RED: реальная settled-проекция каталога занимала только `0.22644` ширины desktop-кадра. После расширения семи детерминированных кластеров GREEN-значение стало `0.63534`; non-hero galaxies получили размер `4.2–14.7 px`, scale `1.15` и intensity `1.18`.
+- Cosmic Web visual RED: первый свежий кадр имел central luminance `0.001776` и читался почти чёрным. Первый material pass поднял значение до `0.008040`, второй — до GREEN `0.019529`; purple-magenta ratio достиг `0.026991`.
+- Rendered-geometry bounds regression параметризован для high/medium/economy; все пять `cosmic-web-*` geometries остаются finite и внутри опубликованного объёма.
+
+### Quality budgets и fallback
+
+| Tier | Galaxy points | Local Group | Cosmic Web | Bloom |
+| --- | ---: | ---: | ---: | --- |
+| high | 9000 | 260 | 18000 | `1.18 / 0.72 / 0.48`, scale `0.75` |
+| medium | 5600 | 160 | 9800 | `0.92 / 0.58 / 0.52`, scale `0.5` |
+| economy | 2800 | 90 | 5200 | disabled; тот же base-pass цвет и композиция |
+
+- Reduced motion отключает движение, но не яркость.
+- Composer fail-closed переключается на direct renderer; resize/render/dispose lifecycle покрыт unit-тестами.
+- На software WebGL полный E2E занимает `2.8m`; Web game временно использует меньший viewport только после запуска публичным UI, затем high-tier evidence снимается после возврата `1920 × 1080`.
+
+### Fresh pixel evidence
+
+| Stage | Desktop `1920 × 1080` | Mobile `390 × 844` |
+| --- | --- | --- |
+| Milky Way | luminance `0.073169`; face-on, bright, >50% width | luminance `0.197579`; face-on core/arms remain readable |
+| Local Group | luminance `0.021911`; `143` bright components; projected catalog width `0.63534`; zero labels | luminance `0.035668`; `36` bright components; zero labels |
+| Cosmic Web | luminance `0.019529`; purple ratio `0.026991` | luminance `0.024405`; purple ratio `0.015126` |
+
+![[task-7-artifacts/galaxy.png]]
+![[task-7-artifacts/local-group.png]]
+![[task-7-artifacts/cosmic-web.png]]
+![[task-7-artifacts/galaxy-mobile.png]]
+![[task-7-artifacts/local-group-mobile.png]]
+![[task-7-artifacts/cosmic-web-mobile.png]]
+
+### Gates и reviews
+
+- Unit: `174/174`, `12/12` files.
+- Coverage overall: statements `87.92%`, branches `77.43%`, functions `84.83%`, lines `89.87%`.
+- Changed visual files: `local-group.js` — `96.15% / 83.92% / 100% / 96.73%`; `cosmic-web.js` — `99.56% / 95.31% / 100% / 100%`; postprocessing — `98.92% / 95.83% / 100% / 100%`.
+- Build: PASS, `49` modules; известное предупреждение о chunk `999.85 kB` остаётся advisory.
+- E2E: `5/5` PASS за `2.8m`; реальные победы, rail/progression, zero Local Group labels, no horizontal overflow и zero console/WebGL errors.
+- Anti-progress stability: `--repeat-each=2` — `2/2` PASS за `28.6s` и `29.7s`; прежний RED был default `30s` timeout, а не retry или неверное состояние.
+- Audit: `0 vulnerabilities`; `git diff --check`: clean.
+- Independent code, spec, visual и security reviews: Critical `0`, Important `0` после исправлений; visual verdict `Approve`.
+
+Feature commit: `f7c38eb`.
+
+> [!warning] Остаточные риски
+> Production chunk остаётся больше `500 kB`. Mobile distance rail частично перекрывает правую область Local Group/Cosmic Web, но независимый visual review классифицировал это как Minor: horizontal overflow и неприемлемого crop нет.
