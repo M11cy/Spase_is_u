@@ -636,6 +636,51 @@ describe("createCosmicWebLayer", () => {
     layer.dispose();
   });
 
+  it("keeps every rendered geometry coordinate finite and inside the published volume", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+    const { volume } = layer.root.userData.structure;
+    const renderedGeometry = layer.root.children.filter(({ name, geometry }) => (
+      name.startsWith("cosmic-web-") && geometry?.getAttribute("position")
+    ));
+    const violations = renderedGeometry.flatMap(({ name, geometry }) => {
+      const positions = geometry.getAttribute("position");
+      for (let index = 0; index < positions.count; index += 1) {
+        const coordinate = [positions.getX(index), positions.getY(index), positions.getZ(index)];
+        const [x, y, z] = coordinate;
+        const finite = coordinate.every(Number.isFinite);
+        const inside = Math.abs(x) <= volume.width / 2
+          && Math.abs(y) <= volume.height / 2
+          && z >= volume.centerZ - volume.depth / 2
+          && z <= volume.centerZ + volume.depth / 2;
+        if (!finite || !inside) return [{ name, index, coordinate }];
+      }
+      return [];
+    });
+    const boundaryRatios = renderedGeometry.map(({ name, geometry }) => {
+      const positions = geometry.getAttribute("position");
+      const boundaryCount = Array.from({ length: positions.count }, (_, index) => index)
+        .filter((index) => (
+          Math.abs(positions.getX(index)) === volume.width / 2
+          || Math.abs(positions.getY(index)) === volume.height / 2
+          || positions.getZ(index) === volume.centerZ - volume.depth / 2
+          || positions.getZ(index) === volume.centerZ + volume.depth / 2
+        )).length;
+      return { name, ratio: boundaryCount / positions.count };
+    });
+
+    expect(renderedGeometry.map(({ name }) => name).sort()).toEqual([
+      "cosmic-web-depth",
+      "cosmic-web-filaments",
+      "cosmic-web-hot-nodes",
+      "cosmic-web-nodes",
+      "cosmic-web-particles"
+    ]);
+    expect(violations).toEqual([]);
+    expect(boundaryRatios.every(({ ratio }) => ratio < 0.02)).toBe(true);
+
+    layer.dispose();
+  });
+
   it("limits selective bloom to dense nodes while preserving their base layer", () => {
     const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
     const bloomLayer = new THREE.Layers();

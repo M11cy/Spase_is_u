@@ -7,20 +7,31 @@ import {
 } from "./deep-space-utils.js";
 
 const VOLUME = Object.freeze({ width: 1320, height: 760, depth: 190, centerZ: -235 });
+const VOLUME_BOUNDS = Object.freeze({
+  minX: -VOLUME.width / 2,
+  maxX: VOLUME.width / 2,
+  minY: -VOLUME.height / 2,
+  maxY: VOLUME.height / 2,
+  minZ: VOLUME.centerZ - VOLUME.depth / 2,
+  maxZ: VOLUME.centerZ + VOLUME.depth / 2
+});
 const PALETTE = Object.freeze([0x8b5cf6, 0xd946ef, 0xf472b6, 0xfbbf24]);
 const NODE_BUDGET = Object.freeze({ high: 120, medium: 92, economy: 68 });
 const FILAMENT_OPACITY = Object.freeze({ high: 0.58, medium: 0.52, economy: 0.48 });
 const HOT_NODE_RATIO = 0.1;
 const DEPTH_LAYERS = 3;
-const DEPTH_CENTERS = Object.freeze([-330, -235, -140]);
+const DEPTH_CENTERS = Object.freeze([-300, -235, -170]);
 const CLUSTER_ANCHORS = Object.freeze([
-  Object.freeze([-0.42, -0.3]), Object.freeze([-0.2, -0.12]),
-  Object.freeze([0.04, -0.34]), Object.freeze([0.31, -0.18]),
-  Object.freeze([0.43, 0.1]), Object.freeze([0.19, 0.32]),
-  Object.freeze([-0.06, 0.16]), Object.freeze([-0.34, 0.28]),
-  Object.freeze([-0.46, 0.03]), Object.freeze([-0.13, -0.4]),
-  Object.freeze([0.12, -0.04]), Object.freeze([0.4, 0.37])
+  Object.freeze([-0.37, -0.29]), Object.freeze([-0.2, -0.12]),
+  Object.freeze([0.04, -0.3]), Object.freeze([0.31, -0.18]),
+  Object.freeze([0.37, 0.1]), Object.freeze([0.19, 0.3]),
+  Object.freeze([-0.06, 0.16]), Object.freeze([-0.32, 0.27]),
+  Object.freeze([-0.37, 0.03]), Object.freeze([-0.13, -0.3]),
+  Object.freeze([0.12, -0.04]), Object.freeze([0.37, 0.3])
 ]);
+const DEPTH_FIELD_SPREAD = Object.freeze({ x: 46, y: 38, z: 18 });
+const GAUSSIAN_LIMIT = 2.5;
+const VOLUME_INSET = 1;
 const NODE_POINTS_PER_TIER = Object.freeze({ high: 18, medium: 12, economy: 8 });
 const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
   "Group",
@@ -70,25 +81,64 @@ const gaussian = (random) => {
 };
 
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+const boundedGaussian = (random) => clamp(gaussian(random), -GAUSSIAN_LIMIT, GAUSSIAN_LIMIT);
+
+const clampPositionToVolume = ([x, y, z]) => [
+  clamp(x, VOLUME_BOUNDS.minX, VOLUME_BOUNDS.maxX),
+  clamp(y, VOLUME_BOUNDS.minY, VOLUME_BOUNDS.maxY),
+  clamp(z, VOLUME_BOUNDS.minZ, VOLUME_BOUNDS.maxZ)
+];
+
+const clampPositionsToVolume = (positions) => {
+  const clamped = new Float32Array(positions.length);
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    clamped[offset] = clamp(positions[offset], VOLUME_BOUNDS.minX, VOLUME_BOUNDS.maxX);
+    clamped[offset + 1] = clamp(
+      positions[offset + 1],
+      VOLUME_BOUNDS.minY,
+      VOLUME_BOUNDS.maxY
+    );
+    clamped[offset + 2] = clamp(
+      positions[offset + 2],
+      VOLUME_BOUNDS.minZ,
+      VOLUME_BOUNDS.maxZ
+    );
+  }
+  return clamped;
+};
+
+const insetPositionForSpread = ([x, y, z], spread) => [
+  clamp(
+    x,
+    VOLUME_BOUNDS.minX + spread.x * GAUSSIAN_LIMIT + VOLUME_INSET,
+    VOLUME_BOUNDS.maxX - spread.x * GAUSSIAN_LIMIT - VOLUME_INSET
+  ),
+  clamp(
+    y,
+    VOLUME_BOUNDS.minY + spread.y * GAUSSIAN_LIMIT + VOLUME_INSET,
+    VOLUME_BOUNDS.maxY - spread.y * GAUSSIAN_LIMIT - VOLUME_INSET
+  ),
+  clamp(
+    z,
+    VOLUME_BOUNDS.minZ + spread.z * GAUSSIAN_LIMIT + VOLUME_INSET,
+    VOLUME_BOUNDS.maxZ - spread.z * GAUSSIAN_LIMIT - VOLUME_INSET
+  )
+];
 
 const buildGraph = (seed, nodeBudget) => {
   const random = createSeededRandom(seed);
   const centers = CLUSTER_ANCHORS.map(([anchorX, anchorY], clusterIndex) => Object.freeze([
-    anchorX * VOLUME.width + gaussian(random) * 18,
-    anchorY * VOLUME.height + gaussian(random) * 14,
+    anchorX * VOLUME.width + boundedGaussian(random) * 18,
+    anchorY * VOLUME.height + boundedGaussian(random) * 14,
     DEPTH_CENTERS[clusterIndex % DEPTH_LAYERS]
   ]));
   const nodes = Array.from({ length: nodeBudget }, (_, nodeIndex) => {
     const center = centers[nodeIndex % centers.length];
-    return Object.freeze([
-      clamp(center[0] + gaussian(random) * 40, -VOLUME.width / 2, VOLUME.width / 2),
-      clamp(center[1] + gaussian(random) * 30, -VOLUME.height / 2, VOLUME.height / 2),
-      clamp(
-        center[2] + gaussian(random) * 7,
-        VOLUME.centerZ - VOLUME.depth / 2,
-        VOLUME.centerZ + VOLUME.depth / 2
-      )
-    ]);
+    return Object.freeze(clampPositionToVolume([
+      center[0] + boundedGaussian(random) * 40,
+      center[1] + boundedGaussian(random) * 30,
+      center[2] + boundedGaussian(random) * 7
+    ]));
   });
   const edgeKeys = new Set();
 
@@ -132,7 +182,10 @@ const pushColor = (target, color, intensity) => {
 
 const createGeometry = (THREE, positions, colors) => {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(clampPositionsToVolume(positions), 3)
+  );
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   return geometry;
 };
@@ -179,9 +232,9 @@ const createParticles = (THREE, graph, glowTexture, count, seed) => {
       : edgeProgress;
     const spread = 1.7 + random() * (towardNode ? 2.5 : 4.2);
     positions.push(
-      start[0] + (end[0] - start[0]) * progress + gaussian(random) * spread,
-      start[1] + (end[1] - start[1]) * progress + gaussian(random) * spread,
-      start[2] + (end[2] - start[2]) * progress + gaussian(random) * spread * 0.65
+      start[0] + (end[0] - start[0]) * progress + boundedGaussian(random) * spread,
+      start[1] + (end[1] - start[1]) * progress + boundedGaussian(random) * spread,
+      start[2] + (end[2] - start[2]) * progress + boundedGaussian(random) * spread * 0.65
     );
     const color = index % 7 === 0 ? magenta : violet;
     pushColor(colors, color, index % 13 === 0 ? 1 : 0.56 + random() * 0.4);
@@ -213,9 +266,9 @@ const createNodes = (THREE, graph, glowTexture, quality, seed) => {
   graph.nodes.forEach((node) => {
     for (let pointIndex = 0; pointIndex < pointsPerNode; pointIndex += 1) {
       const spread = pointIndex === 0 ? 0 : 3.2 + random() * 4.8;
-      const offsetX = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread;
-      const offsetY = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread;
-      const offsetZ = Math.max(-2.5, Math.min(2.5, gaussian(random))) * spread * 0.62;
+      const offsetX = boundedGaussian(random) * spread;
+      const offsetY = boundedGaussian(random) * spread;
+      const offsetZ = boundedGaussian(random) * spread * 0.62;
       positions.push(node[0] + offsetX, node[1] + offsetY, node[2] + offsetZ);
       const color = pointIndex === 0 ? pink : magenta;
       pushColor(colors, color, pointIndex < 2 ? 1 : 0.5 + random() * 0.46);
@@ -285,10 +338,11 @@ const createDepthField = (THREE, graph, glowTexture, pointBudget, seed) => {
   const pink = new THREE.Color(PALETTE[2]);
   for (let index = 0; index < count; index += 1) {
     const node = graph.nodes[index % graph.nodes.length];
+    const center = insetPositionForSpread(node, DEPTH_FIELD_SPREAD);
     positions.push(
-      node[0] + gaussian(random) * 46,
-      node[1] + gaussian(random) * 38,
-      node[2] + gaussian(random) * 18
+      center[0] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.x,
+      center[1] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.y,
+      center[2] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.z
     );
     const color = index % 9 === 0 ? pink : violet;
     pushColor(colors, color, 0.26 + random() * 0.34);
