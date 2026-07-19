@@ -3,21 +3,21 @@ const PROFILES = Object.freeze({
     tier: "high",
     pixelRatio: 1.5,
     stars: 5200,
-    cosmicWebPoints: 9800,
+    cosmicWebPoints: 18000,
     galaxyPoints: 9000
   }),
   medium: Object.freeze({
     tier: "medium",
     pixelRatio: 1.25,
     stars: 3600,
-    cosmicWebPoints: 5200,
+    cosmicWebPoints: 9800,
     galaxyPoints: 5600
   }),
   economy: Object.freeze({
     tier: "economy",
     pixelRatio: 1,
     stars: 1800,
-    cosmicWebPoints: 2600,
+    cosmicWebPoints: 5200,
     galaxyPoints: 2800
   })
 });

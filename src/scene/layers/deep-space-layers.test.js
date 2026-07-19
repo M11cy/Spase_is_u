@@ -527,7 +527,7 @@ describe("Local Group main integration", () => {
 
 const createCosmicWeb = (overrides = {}) => createCosmicWebLayer({
   THREE,
-  quality: { tier: "economy", cosmicWebPoints: 2600 },
+  quality: { tier: "economy", cosmicWebPoints: 5200 },
   glowTexture: null,
   reducedMotion: false,
   seed: 20260719,
@@ -535,6 +535,129 @@ const createCosmicWeb = (overrides = {}) => createCosmicWebLayer({
 });
 
 describe("createCosmicWebLayer", () => {
+  it.each([
+    [{ width: 1920, height: 1080, dpr: 2, cores: 12, reducedMotion: false }, "high", 18000],
+    [{ width: 1024, height: 768, dpr: 2, cores: 8, reducedMotion: false }, "medium", 9800],
+    [{ width: 390, height: 844, dpr: 3, cores: 12, reducedMotion: false }, "economy", 5200]
+  ])("publishes the %s Cosmic Web particle budget", (input, tier, cosmicWebPoints) => {
+    expect(createQualityProfile(input)).toMatchObject({ tier, cosmicWebPoints });
+  });
+
+  it("uses a bright purple-magenta network with golden hot nodes", () => {
+    const layer = createCosmicWeb({
+      quality: { tier: "high", cosmicWebPoints: 18000 },
+      seed: 20260719
+    });
+    const structure = layer.root.userData.structure;
+    const filaments = layer.root.getObjectByName("cosmic-web-filaments");
+    const hotNodes = layer.root.getObjectByName("cosmic-web-hot-nodes");
+
+    expect(structure).toMatchObject({
+      palette: [0x8b5cf6, 0xd946ef, 0xf472b6, 0xfbbf24],
+      nodeBudget: 120,
+      hotNodeCount: 12,
+      depthLayers: 3
+    });
+    expect(Object.isFrozen(structure)).toBe(true);
+    expect(Object.isFrozen(structure.palette)).toBe(true);
+    expect(filaments.material.opacity).toBe(0.58);
+    expect(hotNodes.geometry.getAttribute("position").count).toBe(12);
+
+    const renderedColors = layer.root.children.flatMap(({ geometry }) => (
+      Array.from(geometry.getAttribute("color")?.array ?? [])
+    ));
+    const paletteColors = structure.palette.map((hex) => new THREE.Color(hex));
+    paletteColors.forEach((color) => {
+      const found = Array.from({ length: renderedColors.length / 3 }, (_, index) => index * 3)
+        .some((offset) => (
+          Math.abs(renderedColors[offset] - color.r) < 0.0001
+          && Math.abs(renderedColors[offset + 1] - color.g) < 0.0001
+          && Math.abs(renderedColors[offset + 2] - color.b) < 0.0001
+        ));
+      expect(found).toBe(true);
+    });
+
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", 18000, 120, 12, 0.58],
+    ["medium", 9800, 92, 9, 0.52],
+    ["economy", 5200, 68, 7, 0.48]
+  ])("uses the exact %s density and readable filament budget", (
+    tier,
+    cosmicWebPoints,
+    nodeBudget,
+    hotNodeCount,
+    filamentOpacity
+  ) => {
+    const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
+    const structure = layer.root.userData.structure;
+
+    expect(layer.graph.nodes).toHaveLength(nodeBudget);
+    expect(layer.root.getObjectByName("cosmic-web-particles").geometry
+      .getAttribute("position").count).toBe(cosmicWebPoints);
+    expect(structure).toMatchObject({ nodeBudget, hotNodeCount, depthLayers: 3 });
+    expect(layer.root.getObjectByName("cosmic-web-filaments").material.opacity)
+      .toBe(filamentOpacity);
+
+    layer.dispose();
+  });
+
+  it("keeps three clustered depth layers instead of uniform flat noise", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+    const { volume } = layer.root.userData.structure;
+    const depthBands = new Set(layer.graph.nodes.map(([, , z]) => (
+      z < -280 ? "far" : z > -190 ? "near" : "middle"
+    )));
+    const occupiedCells = new Set(layer.graph.nodes.map(([x, y]) => (
+      `${Math.floor((x + 660) / 110)}:${Math.floor((y + 380) / 95)}`
+    )));
+    const clusteredNodes = layer.graph.nodes.filter((node, nodeIndex, nodes) => (
+      nodes.some((candidate, candidateIndex) => candidateIndex !== nodeIndex
+        && Math.hypot(
+          node[0] - candidate[0],
+          node[1] - candidate[1],
+          node[2] - candidate[2]
+        ) < 105)
+    ));
+
+    expect(depthBands).toEqual(new Set(["far", "middle", "near"]));
+    expect(layer.graph.nodes.every(([x, y, z]) => (
+      Math.abs(x) <= volume.width / 2
+      && Math.abs(y) <= volume.height / 2
+      && z >= volume.centerZ - volume.depth / 2
+      && z <= volume.centerZ + volume.depth / 2
+    ))).toBe(true);
+    expect(clusteredNodes.length).toBeGreaterThanOrEqual(Math.round(layer.graph.nodes.length * 0.9));
+    expect(occupiedCells.size).toBeGreaterThanOrEqual(12);
+    expect(occupiedCells.size).toBeLessThanOrEqual(52);
+
+    layer.dispose();
+  });
+
+  it("limits selective bloom to dense nodes while preserving their base layer", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+    const bloomLayer = new THREE.Layers();
+    const baseLayer = new THREE.Layers();
+    bloomLayer.set(BLOOM_SCENE_LAYER);
+    baseLayer.set(0);
+    const nodes = layer.root.getObjectByName("cosmic-web-nodes");
+    const hotNodes = layer.root.getObjectByName("cosmic-web-hot-nodes");
+
+    [nodes, hotNodes].forEach((object) => {
+      expect(object.layers.test(baseLayer)).toBe(true);
+      expect(object.layers.test(bloomLayer)).toBe(true);
+    });
+    ["cosmic-web-filaments", "cosmic-web-particles", "cosmic-web-depth"].forEach((name) => {
+      const object = layer.root.getObjectByName(name);
+      expect(object.layers.test(baseLayer)).toBe(true);
+      expect(object.layers.test(bloomLayer)).toBe(false);
+    });
+
+    layer.dispose();
+  });
+
   it("builds a connected deterministic nearest-neighbour graph with frozen normalized records", () => {
     const first = createCosmicWeb();
     const second = createCosmicWeb();
@@ -568,12 +691,12 @@ describe("createCosmicWebLayer", () => {
   });
 
   it("changes the graph when the seed changes without mutating either input", () => {
-    const quality = Object.freeze({ tier: "economy", cosmicWebPoints: 2600 });
+    const quality = Object.freeze({ tier: "economy", cosmicWebPoints: 5200 });
     const first = createCosmicWeb({ quality, seed: 11 });
     const second = createCosmicWeb({ quality, seed: 12 });
 
     expect(first.graph.nodes).not.toEqual(second.graph.nodes);
-    expect(quality).toEqual({ tier: "economy", cosmicWebPoints: 2600 });
+    expect(quality).toEqual({ tier: "economy", cosmicWebPoints: 5200 });
 
     first.dispose();
     second.dispose();
@@ -582,15 +705,15 @@ describe("createCosmicWebLayer", () => {
   it("supports the full safe-integer seed boundary", () => {
     const layer = createCosmicWeb({ seed: Number.MAX_SAFE_INTEGER });
 
-    expect(layer.graph.nodes).toHaveLength(74);
+    expect(layer.graph.nodes).toHaveLength(68);
 
     layer.dispose();
   });
 
   it.each([
-    ["high", 9800],
-    ["medium", 5200],
-    ["economy", 2600]
+    ["high", 18000],
+    ["medium", 9800],
+    ["economy", 5200]
   ])("places the exact %s quality point budget along volumetric filaments", (tier, cosmicWebPoints) => {
     const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
     const particles = layer.root.getObjectByName("cosmic-web-particles");
@@ -611,7 +734,7 @@ describe("createCosmicWebLayer", () => {
   it("forms deterministic quality-scaled galaxy-point clusters around every graph node", () => {
     const first = createCosmicWeb();
     const second = createCosmicWeb();
-    const high = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 9800 } });
+    const high = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
     const firstNodes = first.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
     const secondNodes = second.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
     const highNodes = high.root.getObjectByName("cosmic-web-nodes").geometry.getAttribute("position");
@@ -636,13 +759,14 @@ describe("createCosmicWebLayer", () => {
   });
 
   it("uses independently faded observatory layers and shared parallax behavior", () => {
-    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 9800 } });
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
     const particles = layer.root.getObjectByName("cosmic-web-particles");
     const filaments = layer.root.getObjectByName("cosmic-web-filaments");
     const nodes = layer.root.getObjectByName("cosmic-web-nodes");
     const depth = layer.root.getObjectByName("cosmic-web-depth");
+    const hotNodes = layer.root.getObjectByName("cosmic-web-hot-nodes");
 
-    expect([particles, filaments, nodes, depth].every(({ material }) => (
+    expect([particles, filaments, nodes, depth, hotNodes].every(({ material }) => (
       material.transparent && !material.depthWrite
     ))).toBe(true);
     expect(new Set([particles.renderOrder, filaments.renderOrder, nodes.renderOrder, depth.renderOrder]).size)
@@ -657,12 +781,13 @@ describe("createCosmicWebLayer", () => {
 
   it("honors reduced motion and fails closed for malformed presence and parallax", () => {
     const reduced = createCosmicWeb({
-      quality: { tier: "high", cosmicWebPoints: 9800 },
+      quality: { tier: "high", cosmicWebPoints: 18000 },
       reducedMotion: true
     });
     const economy = createCosmicWeb();
 
     expect(reduced.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+    expect(reduced.root.getObjectByName("cosmic-web-filaments").material.opacity).toBe(0.58);
     expect(economy.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
     economy.setPresence("visible");
     expect(economy.root.visible).toBe(false);
@@ -684,7 +809,7 @@ describe("createCosmicWebLayer", () => {
   ])("rejects invalid boundary input %j", (overrides) => {
     expect(() => createCosmicWebLayer({
       THREE,
-      quality: { tier: "economy", cosmicWebPoints: 2600 },
+      quality: { tier: "economy", cosmicWebPoints: 5200 },
       glowTexture: null,
       reducedMotion: false,
       seed: 20260719,
@@ -694,14 +819,13 @@ describe("createCosmicWebLayer", () => {
 
   it("disposes every resource tree only once", () => {
     const layer = createCosmicWeb();
-    const particles = layer.root.getObjectByName("cosmic-web-particles");
-    const disposeGeometry = vi.spyOn(particles.geometry, "dispose");
-    const disposeMaterial = vi.spyOn(particles.material, "dispose");
+    const resources = layer.root.children.flatMap((child) => [child.geometry, child.material]);
+    const disposeSpies = resources.map((resource) => vi.spyOn(resource, "dispose"));
 
     layer.dispose();
     layer.dispose();
 
-    expect(disposeGeometry).toHaveBeenCalledOnce();
-    expect(disposeMaterial).toHaveBeenCalledOnce();
+    disposeSpies.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+    expect(layer.root.children).toHaveLength(0);
   });
 });
