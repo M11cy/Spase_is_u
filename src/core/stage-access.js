@@ -1,8 +1,45 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const createStageIndex = (stages) => Object.freeze(
-  Object.fromEntries(stages.map(({ id }, index) => [id, index]))
-);
+const JOURNEY_STAGE_IDS = Object.freeze([
+  "place",
+  "earth",
+  "solar-system",
+  "milky-way",
+  "local-group",
+  "cosmic-web",
+  "unknown"
+]);
+
+const validateJourneyStages = (stages) => {
+  if (!Array.isArray(stages)) {
+    throw new TypeError("stages must be an array of journey stages");
+  }
+
+  if (stages.length !== JOURNEY_STAGE_IDS.length) {
+    throw new RangeError("stages must contain exactly seven journey stages");
+  }
+
+  const ids = stages.map((stage, index) => {
+    if (!stage || typeof stage.id !== "string") {
+      throw new TypeError(`stage at index ${index} must have a string id`);
+    }
+    return stage.id;
+  });
+
+  if (new Set(ids).size !== ids.length) {
+    throw new RangeError("stages must contain unique journey stage ids");
+  }
+
+  const hasExpectedOrder = ids.every((id, index) => id === JOURNEY_STAGE_IDS[index]);
+  if (!hasExpectedOrder) {
+    throw new RangeError("stages must match the fixed journey stage order");
+  }
+};
+
+export const createStageIndex = (stages) => {
+  validateJourneyStages(stages);
+  return Object.freeze(Object.fromEntries(stages.map(({ id }, index) => [id, index])));
+};
 
 export const getHighestUnlockedStage = ({ stages, journeyState }) => {
   const index = createStageIndex(stages);
@@ -12,9 +49,16 @@ export const getHighestUnlockedStage = ({ stages, journeyState }) => {
   return stages.length - 1;
 };
 
-export const clampStageTarget = ({ requestedStage, highestUnlockedStage }) => (
-  clamp(Math.round(requestedStage), 0, highestUnlockedStage)
-);
+export const clampStageTarget = ({ requestedStage, highestUnlockedStage }) => {
+  const safeHighestUnlockedStage = Number.isFinite(highestUnlockedStage)
+    ? Math.max(0, Math.floor(highestUnlockedStage))
+    : 0;
+  const safeRequestedStage = Number.isFinite(requestedStage)
+    ? Math.round(requestedStage)
+    : 0;
+
+  return clamp(safeRequestedStage, 0, safeHighestUnlockedStage);
+};
 
 export const scrollYForStage = ({ stage, stageCount, maxScroll }) => (
   stageCount <= 1 ? 0 : maxScroll * (stage / (stageCount - 1))
