@@ -408,6 +408,7 @@ function markUserInteraction() {
 function updateMissionForStage() {
   if (activeStage === STAGE_INDEX.earth && !journeyState.rocketCaught) {
     if (!journeyState.earthShipReady) {
+      if (!missionStatus.hidden && missionStatus.textContent === stageAccess.reason) return;
       showMission("");
       return;
     }
