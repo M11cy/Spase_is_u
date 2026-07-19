@@ -22,6 +22,33 @@ const PROFILES = Object.freeze({
   })
 });
 
+const DEEP_SPACE = Object.freeze({
+  high: Object.freeze({
+    bloomEnabled: true,
+    bloomStrength: 1.18,
+    bloomRadius: 0.72,
+    bloomThreshold: 0.48,
+    bloomScale: 0.75,
+    localGroupGalaxies: 260
+  }),
+  medium: Object.freeze({
+    bloomEnabled: true,
+    bloomStrength: 0.92,
+    bloomRadius: 0.58,
+    bloomThreshold: 0.52,
+    bloomScale: 0.5,
+    localGroupGalaxies: 160
+  }),
+  economy: Object.freeze({
+    bloomEnabled: false,
+    bloomStrength: 0,
+    bloomRadius: 0,
+    bloomThreshold: 1,
+    bloomScale: 0.5,
+    localGroupGalaxies: 90
+  })
+});
+
 export const createNearSpaceComposition = ({ width, height = width }) => {
   const aspect = height > 0 ? width / height : 1;
   const compact = width <= 760 || aspect < 0.9;
@@ -38,6 +65,7 @@ export const createQualityProfile = ({ width, height = width, dpr, cores, reduce
 
   return Object.freeze({
     ...base,
+    ...DEEP_SPACE[tier],
     pixelRatio: Math.min(base.pixelRatio, dpr),
     animatedParticles: !reducedMotion && tier !== "economy",
     compactNearSpace: createNearSpaceComposition({ width, height }).compact

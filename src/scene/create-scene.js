@@ -91,6 +91,7 @@ export const createScene = ({
   cameraTarget: adoptedCameraTarget = null,
   raycaster: adoptedRaycaster = null,
   pointer: adoptedPointer = null,
+  renderPipeline = null,
   rendererFactory = (options) => createDefaultRenderer(THREE, options.canvas)
 }) => {
   const renderer = adoptedRenderer
@@ -129,6 +130,7 @@ export const createScene = ({
     renderer.setSize(nextWidth, nextHeight, false);
     camera.aspect = nextWidth / nextHeight;
     camera.updateProjectionMatrix();
+    renderPipeline?.resize(size);
   };
 
   const update = ({ stageState, cameraPose, viewport }) => {
@@ -174,7 +176,12 @@ export const createScene = ({
   };
 
   const render = () => {
-    if (!disposed) renderer.render(scene, camera);
+    if (disposed) return;
+    if (renderPipeline) {
+      renderPipeline.render();
+    } else {
+      renderer.render(scene, camera);
+    }
   };
 
   const dispose = () => {
@@ -184,6 +191,7 @@ export const createScene = ({
       layer.root.parent?.remove(layer.root);
       layer.dispose();
     });
+    renderPipeline?.dispose();
     scene.clear();
     renderer.dispose();
   };
