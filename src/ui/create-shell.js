@@ -24,9 +24,6 @@ export const setLabelAccessibility = (label, isVisible) => {
 
 export function createShell({ root, stages }) {
   document.body.classList.add("intro-pending");
-  const distanceRouteSummary = stages
-    .map((stage) => `${stage.label}: ${stage.distance}`)
-    .join(". ");
   root.innerHTML = `
     <main class="experience">
     <section id="introLayer" class="cinematic-intro" aria-label="Начало путешествия">
@@ -135,7 +132,7 @@ export function createShell({ root, stages }) {
         <strong id="distanceValue"></strong>
         <ol id="distanceMarkers" aria-hidden="true"></ol>
       </aside>
-      <p id="distanceScaleA11ySummary" class="sr-only">${distanceRouteSummary}</p>
+      <p id="distanceScaleA11ySummary" class="sr-only"></p>
       <section id="unknownLayer" class="unknown-layer" aria-label="Неизвестный масштаб">
         <div>
           <strong>?</strong>
@@ -167,6 +164,7 @@ export function createShell({ root, stages }) {
   const distanceScale = root.querySelector("#distanceScale");
   const distanceValue = root.querySelector("#distanceValue");
   const distanceMarkers = root.querySelector("#distanceMarkers");
+  const distanceScaleA11ySummary = root.querySelector("#distanceScaleA11ySummary");
   const unknownLayer = root.querySelector("#unknownLayer");
   const introLayer = root.querySelector("#introLayer");
   const startJourneyButton = root.querySelector("#startJourneyButton");
@@ -195,6 +193,10 @@ export function createShell({ root, stages }) {
   const enginePuzzleBoard = root.querySelector("#enginePuzzleBoard");
   const enginePuzzleStatus = root.querySelector("#enginePuzzleStatus");
   const enginePuzzleClose = root.querySelector("#enginePuzzleClose");
+
+  distanceScaleA11ySummary.textContent = stages
+    .map((stage) => `${stage.label}: ${stage.distance}`)
+    .join(". ");
 
   const stageButtons = stages.map((stage, index) => {
     const button = document.createElement("button");

@@ -91,15 +91,18 @@ describe("createShell stage access", () => {
   });
 
   it("exposes a complete distance route to assistive technology while keeping visual markers decorative", () => {
+    const routeStages = [
+      { id: "custom-stage", label: "<Earth & beyond>", distance: "&lt;1 & 2&gt;" },
+      { id: "another-stage", label: "A &amp; B", distance: "<strong>far</strong>" }
+    ];
     document.body.innerHTML = '<div id="app"></div>';
-    const shell = createShell({ root: document.querySelector("#app"), stages });
+    const shell = createShell({ root: document.querySelector("#app"), stages: routeStages });
     const routeSummary = shell.root.querySelector("#distanceScaleA11ySummary");
+    const expectedRoute = routeStages.map((stage) => `${stage.label}: ${stage.distance}`).join(". ");
 
     expect(routeSummary).not.toBeNull();
     expect(routeSummary.classList.contains("sr-only")).toBe(true);
-    stages.forEach((stage) => {
-      expect(routeSummary.textContent).toContain(`${stage.label}: ${stage.distance}`);
-    });
+    expect(routeSummary.textContent).toBe(expectedRoute);
     expect(shell.distanceScale.getAttribute("aria-describedby"))
       .toBe("distanceScaleA11ySummary");
     expect(shell.distanceMarkers.getAttribute("aria-hidden")).toBe("true");
