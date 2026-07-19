@@ -13,13 +13,24 @@ const HEROES_PER_TIER = Object.freeze({ high: 14, medium: 11, economy: 8 });
 const PROFILE_ASPECT = Object.freeze({ spiral: 1.78, elliptical: 1.34, irregular: 1.18 });
 const PROFILE_COLORS = Object.freeze({ warm: 0xffbd7a, cool: 0xb7d6ff });
 const CLUSTERS = Object.freeze([
-  Object.freeze([-300, 76, -145, 38, 21, 24]),
-  Object.freeze([-205, -68, -205, 50, 27, 32]),
-  Object.freeze([-70, 92, -268, 42, 23, 34]),
-  Object.freeze([110, -84, -326, 52, 26, 38]),
-  Object.freeze([285, 42, -388, 42, 24, 32]),
-  Object.freeze([-280, -8, -448, 40, 34, 30]),
-  Object.freeze([165, 96, -505, 44, 22, 28])
+  Object.freeze([-300, 132, -150, 38, 24, 24]),
+  Object.freeze([-150, 150, -205, 42, 22, 30]),
+  Object.freeze([0, 160, -260, 36, 26, 32]),
+  Object.freeze([150, 152, -315, 42, 22, 34]),
+  Object.freeze([300, 128, -370, 38, 25, 28]),
+  Object.freeze([-310, 6, -430, 34, 28, 30]),
+  Object.freeze([-155, -18, -485, 46, 25, 28]),
+  Object.freeze([0, 18, -175, 38, 30, 30]),
+  Object.freeze([155, -12, -235, 44, 24, 32]),
+  Object.freeze([310, 10, -295, 34, 28, 34]),
+  Object.freeze([-285, -132, -350, 42, 24, 32]),
+  Object.freeze([-92, -148, -410, 48, 22, 28]),
+  Object.freeze([92, -126, -470, 44, 26, 26]),
+  Object.freeze([285, -146, -520, 40, 23, 22]),
+  Object.freeze([0, -58, -540, 32, 20, 20]),
+  Object.freeze([-228, 70, -280, 34, 20, 26]),
+  Object.freeze([78, 72, -390, 36, 22, 30]),
+  Object.freeze([232, -76, -455, 34, 21, 24])
 ]);
 const EMPTY_INTERACTIVE = Object.freeze([]);
 
@@ -136,7 +147,7 @@ const requireLayerInput = ({ THREE, quality, reducedMotion, seed }) => {
 const centeredRandom = (random) => random() + random() + random() - 1.5;
 
 const sampleClusteredPosition = (random, index) => {
-  const cluster = CLUSTERS[(index * 5 + Math.floor(random() * CLUSTERS.length)) % CLUSTERS.length];
+  const cluster = CLUSTERS[(index * 7) % CLUSTERS.length];
   const [centerX, centerY, centerZ, spreadX, spreadY, spreadZ] = cluster;
   let x = centerX + centeredRandom(random) * spreadX;
   let y = centerY + centeredRandom(random) * spreadY;
@@ -157,7 +168,7 @@ const createCatalog = ({ count, heroCount, random }) => Object.freeze(Array.from
     id: `deep-field-${index}`,
     profile: PROFILE_ORDER[index % PROFILE_ORDER.length],
     position: sampleClusteredPosition(random, index),
-    size: index < heroCount ? 18 + random() * 22 : 4.2 + random() * 10.5,
+    size: index < heroCount ? 18 + random() * 22 : 8.2 + random() * 9.7,
     rotation: random() * Math.PI * 2,
     temperature: index % 7 === 0 ? "warm" : "cool"
   })
@@ -189,8 +200,8 @@ const createMaterial = (THREE, { profile = null, core = false }) => new THREE.Sh
   defines: profile ? { [`PROFILE_${profile.toUpperCase()}`]: 1 } : {},
   uniforms: {
     uPresence: { value: 1 },
-    uPointScale: { value: core ? 0.46 : 1.15 },
-    uIntensity: { value: core ? 1.72 : 1.18 }
+    uPointScale: { value: core ? 0.46 : 1.85 },
+    uIntensity: { value: core ? 1.72 : 1.36 }
   },
   vertexShader: VERTEX_SHADER,
   fragmentShader: core ? CORE_FRAGMENT_SHADER : PROFILE_FRAGMENT_SHADER,

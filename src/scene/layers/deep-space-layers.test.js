@@ -49,6 +49,43 @@ const measureProjectedRingWidth = ({ root, camera, radius, samples = 720 }) => {
   return (Math.max(...projectedX) - Math.min(...projectedX)) / 2;
 };
 
+const createSettledStageCamera = (stageId, aspect = 16 / 9) => {
+  const stage = STAGES.find(({ id }) => id === stageId);
+  const camera = new THREE.PerspectiveCamera(stage.camera.fov, aspect, 0.1, 2000);
+  camera.position.fromArray(stage.camera.position);
+  camera.lookAt(new THREE.Vector3(...stage.camera.target));
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  return camera;
+};
+
+const projectedGridCell = ({ point, camera, columns = 12, rows = 8 }) => {
+  const projected = new THREE.Vector3(...point).project(camera);
+  const normalizedX = (projected.x + 0.84) / 1.56;
+  const normalizedY = (0.84 - projected.y) / 1.48;
+  if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return null;
+  return Math.floor(normalizedY * rows) * columns + Math.floor(normalizedX * columns);
+};
+
+const measureProjectedGraphCoverage = ({ graph, camera, columns = 12, rows = 8 }) => {
+  const edgesByCell = Array.from({ length: columns * rows }, () => new Set());
+  graph.edges.forEach(([from, to], edgeIndex) => {
+    const start = graph.nodes[from];
+    const end = graph.nodes[to];
+    for (let sample = 0; sample <= 24; sample += 1) {
+      const progress = sample / 24;
+      const cell = projectedGridCell({
+        point: start.map((value, axis) => value + (end[axis] - value) * progress),
+        camera,
+        columns,
+        rows
+      });
+      if (cell != null) edgesByCell[cell].add(edgeIndex);
+    }
+  });
+  return edgesByCell.filter((edges) => edges.size >= 2).length / edgesByCell.length;
+};
+
 describe("createMilkyWayLayer", () => {
   it("presents a large four-arm disc at an actual twenty-degree face-on inclination", () => {
     const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
@@ -458,7 +495,7 @@ describe("createLocalGroupLayer", () => {
     const depthBands = new Set(layer.catalog.map(({ position: [, , z] }) => Math.floor((-z - 110) / 55)));
 
     expect(occupiedCells.size).toBeGreaterThanOrEqual(14);
-    expect(occupiedCells.size).toBeLessThanOrEqual(28);
+    expect(occupiedCells.size).toBeLessThanOrEqual(52);
     expect(depthBands.size).toBeGreaterThanOrEqual(5);
     expect(layer.catalog.some(({ position: [x, y] }) => Math.abs(x) < 8 && Math.abs(y) < 8))
       .toBe(false);
@@ -486,6 +523,24 @@ describe("createLocalGroupLayer", () => {
     expect(Math.min(...nonHeroes.map(({ size }) => size))).toBeGreaterThanOrEqual(4);
     expect(profileMaterial.uniforms.uPointScale.value).toBeGreaterThanOrEqual(1.1);
     expect(profileMaterial.uniforms.uIntensity.value).toBeGreaterThanOrEqual(1.15);
+
+    layer.dispose();
+  });
+
+  it("distributes clustered galaxies across the settled central and vertical field with real voids", () => {
+    const layer = createLocalGroup({ quality: { tier: "high", localGroupGalaxies: 260 } });
+    const camera = createSettledStageCamera("local-group");
+    const occupied = new Map();
+    layer.catalog.forEach(({ position }) => {
+      const cell = projectedGridCell({ point: position, camera });
+      if (cell != null) occupied.set(cell, (occupied.get(cell) ?? 0) + 1);
+    });
+    const readableCells = [...occupied].filter(([, count]) => count >= 3).map(([cell]) => cell);
+    const occupiedRows = new Set(readableCells.map((cell) => Math.floor(cell / 12)));
+
+    expect(readableCells.length).toBeGreaterThanOrEqual(26);
+    expect(occupiedRows.size).toBeGreaterThanOrEqual(6);
+    expect(readableCells.length).toBeLessThanOrEqual(50);
 
     layer.dispose();
   });
@@ -584,7 +639,7 @@ describe("createCosmicWebLayer", () => {
     });
     expect(Object.isFrozen(structure)).toBe(true);
     expect(Object.isFrozen(structure.palette)).toBe(true);
-    expect(filaments.material.opacity).toBe(0.58);
+    expect(filaments.material.opacity).toBe(0.72);
     expect(hotNodes.geometry.getAttribute("position").count).toBe(12);
 
     const renderedColors = layer.root.children.flatMap(({ geometry }) => (
@@ -615,19 +670,19 @@ describe("createCosmicWebLayer", () => {
     expect([filaments, particles, nodes, hotNodes, depth].every(({ material }) => (
       material.toneMapped === false
     ))).toBe(true);
-    expect(particles.material).toMatchObject({ size: 7, opacity: 0.98 });
-    expect(nodes.material).toMatchObject({ size: 9.4, opacity: 0.96 });
-    expect(hotNodes.material).toMatchObject({ size: 14, opacity: 1 });
-    expect(depth.material).toMatchObject({ size: 4.6, opacity: 0.65 });
+    expect(particles.material).toMatchObject({ size: 11.4, opacity: 0.98 });
+    expect(nodes.material).toMatchObject({ size: 11.2, opacity: 0.96 });
+    expect(hotNodes.material).toMatchObject({ size: 16, opacity: 1 });
+    expect(depth.material).toMatchObject({ size: 5.2, opacity: 0.65 });
     expect(Math.max(...filaments.geometry.getAttribute("color").array)).toBeGreaterThan(1);
 
     layer.dispose();
   });
 
   it.each([
-    ["high", 18000, 120, 12, 0.58],
-    ["medium", 9800, 92, 9, 0.52],
-    ["economy", 5200, 68, 7, 0.48]
+    ["high", 18000, 120, 12, 0.72],
+    ["medium", 9800, 92, 9, 0.64],
+    ["economy", 5200, 68, 7, 0.56]
   ])("uses the exact %s density and readable filament budget", (
     tier,
     cosmicWebPoints,
@@ -675,7 +730,18 @@ describe("createCosmicWebLayer", () => {
     ))).toBe(true);
     expect(clusteredNodes.length).toBeGreaterThanOrEqual(Math.round(layer.graph.nodes.length * 0.9));
     expect(occupiedCells.size).toBeGreaterThanOrEqual(12);
-    expect(occupiedCells.size).toBeLessThanOrEqual(52);
+    expect(occupiedCells.size).toBeLessThanOrEqual(70);
+
+    layer.dispose();
+  });
+
+  it("weaves multiple independent strands continuously across the settled central field", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+    const camera = createSettledStageCamera("cosmic-web");
+    const projectedCoverage = measureProjectedGraphCoverage({ graph: layer.graph, camera });
+
+    expect(projectedCoverage).toBeGreaterThanOrEqual(0.6);
+    expect(layer.graph.edges.length).toBeLessThanOrEqual(layer.graph.nodes.length * 3);
 
     layer.dispose();
   });
@@ -786,6 +852,32 @@ describe("createCosmicWebLayer", () => {
     second.dispose();
   });
 
+  it("caps non-default medium graphs without dropping the connected spanning backbone", () => {
+    const layer = createCosmicWeb({
+      quality: { tier: "medium", cosmicWebPoints: 9800 },
+      seed: 106
+    });
+    const adjacency = layer.graph.nodes.map(() => []);
+    layer.graph.edges.forEach(([from, to]) => {
+      adjacency[from].push(to);
+      adjacency[to].push(from);
+    });
+    const visited = new Set([0]);
+    const queue = [0];
+    while (queue.length > 0) {
+      adjacency[queue.shift()].forEach((node) => {
+        if (visited.has(node)) return;
+        visited.add(node);
+        queue.push(node);
+      });
+    }
+
+    expect(layer.graph.edges.length).toBeLessThanOrEqual(layer.graph.nodes.length * 3);
+    expect(visited.size).toBe(layer.graph.nodes.length);
+
+    layer.dispose();
+  });
+
   it("changes the graph when the seed changes without mutating either input", () => {
     const quality = Object.freeze({ tier: "economy", cosmicWebPoints: 5200 });
     const first = createCosmicWeb({ quality, seed: 11 });
@@ -883,7 +975,7 @@ describe("createCosmicWebLayer", () => {
     const economy = createCosmicWeb();
 
     expect(reduced.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
-    expect(reduced.root.getObjectByName("cosmic-web-filaments").material.opacity).toBe(0.58);
+    expect(reduced.root.getObjectByName("cosmic-web-filaments").material.opacity).toBe(0.72);
     expect(economy.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
     economy.setPresence("visible");
     expect(economy.root.visible).toBe(false);

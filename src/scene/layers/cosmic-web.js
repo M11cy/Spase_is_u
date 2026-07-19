@@ -17,17 +17,24 @@ const VOLUME_BOUNDS = Object.freeze({
 });
 const PALETTE = Object.freeze([0x8b5cf6, 0xd946ef, 0xf472b6, 0xfbbf24]);
 const NODE_BUDGET = Object.freeze({ high: 120, medium: 92, economy: 68 });
-const FILAMENT_OPACITY = Object.freeze({ high: 0.58, medium: 0.52, economy: 0.48 });
+const FILAMENT_OPACITY = Object.freeze({ high: 0.72, medium: 0.64, economy: 0.56 });
 const HOT_NODE_RATIO = 0.1;
 const DEPTH_LAYERS = 3;
 const DEPTH_CENTERS = Object.freeze([-300, -235, -170]);
+const ANCHOR_COLUMNS = 6;
 const CLUSTER_ANCHORS = Object.freeze([
-  Object.freeze([-0.37, -0.29]), Object.freeze([-0.2, -0.12]),
-  Object.freeze([0.04, -0.3]), Object.freeze([0.31, -0.18]),
-  Object.freeze([0.37, 0.1]), Object.freeze([0.19, 0.3]),
-  Object.freeze([-0.06, 0.16]), Object.freeze([-0.32, 0.27]),
-  Object.freeze([-0.37, 0.03]), Object.freeze([-0.13, -0.3]),
-  Object.freeze([0.12, -0.04]), Object.freeze([0.37, 0.3])
+  Object.freeze([-0.37, 0.36]), Object.freeze([-0.22, 0.36]),
+  Object.freeze([-0.07, 0.36]), Object.freeze([0.08, 0.36]),
+  Object.freeze([0.23, 0.36]), Object.freeze([0.38, 0.36]),
+  Object.freeze([-0.42, 0.12]), Object.freeze([-0.27, 0.12]),
+  Object.freeze([-0.12, 0.12]), Object.freeze([0.03, 0.12]),
+  Object.freeze([0.18, 0.12]), Object.freeze([0.33, 0.12]),
+  Object.freeze([-0.37, -0.12]), Object.freeze([-0.22, -0.12]),
+  Object.freeze([-0.07, -0.12]), Object.freeze([0.08, -0.12]),
+  Object.freeze([0.23, -0.12]), Object.freeze([0.38, -0.12]),
+  Object.freeze([-0.42, -0.36]), Object.freeze([-0.27, -0.36]),
+  Object.freeze([-0.12, -0.36]), Object.freeze([0.03, -0.36]),
+  Object.freeze([0.18, -0.36]), Object.freeze([0.33, -0.36])
 ]);
 const DEPTH_FIELD_SPREAD = Object.freeze({ x: 46, y: 38, z: 18 });
 const GAUSSIAN_LIMIT = 2.5;
@@ -135,12 +142,17 @@ const buildGraph = (seed, nodeBudget) => {
   const nodes = Array.from({ length: nodeBudget }, (_, nodeIndex) => {
     const center = centers[nodeIndex % centers.length];
     return Object.freeze(clampPositionToVolume([
-      center[0] + boundedGaussian(random) * 40,
-      center[1] + boundedGaussian(random) * 30,
-      center[2] + boundedGaussian(random) * 7
+      center[0] + boundedGaussian(random) * 38,
+      center[1] + boundedGaussian(random) * 28,
+      center[2] + boundedGaussian(random) * 9
     ]));
   });
   const edgeKeys = new Set();
+  const maximumEdgeCount = nodeBudget * 3;
+  const addEdge = (left, right) => {
+    const key = edgeKey(left, right);
+    if (edgeKeys.has(key) || edgeKeys.size < maximumEdgeCount) edgeKeys.add(key);
+  };
 
   for (let nodeIndex = 1; nodeIndex < nodes.length; nodeIndex += 1) {
     let nearestIndex = 0;
@@ -152,7 +164,7 @@ const buildGraph = (seed, nodeBudget) => {
         nearestDistance = distance;
       }
     }
-    edgeKeys.add(edgeKey(nodeIndex, nearestIndex));
+    addEdge(nodeIndex, nearestIndex);
   }
 
   nodes.forEach((node, nodeIndex) => {
@@ -164,7 +176,29 @@ const buildGraph = (seed, nodeBudget) => {
       .filter(({ candidateIndex }) => candidateIndex !== nodeIndex)
       .sort((left, right) => left.distance - right.distance || left.candidateIndex - right.candidateIndex)
       .slice(0, 2);
-    nearest.forEach(({ candidateIndex }) => edgeKeys.add(edgeKey(nodeIndex, candidateIndex)));
+    nearest.forEach(({ candidateIndex }) => addEdge(nodeIndex, candidateIndex));
+  });
+
+  const nodesPerAnchor = Math.floor(nodeBudget / CLUSTER_ANCHORS.length);
+  const bridgeLanes = Math.min(3, nodesPerAnchor);
+  const connectAnchors = (fromAnchor, toAnchor) => {
+    for (let lane = 0; lane < bridgeLanes; lane += 1) {
+      const from = fromAnchor + lane * CLUSTER_ANCHORS.length;
+      const to = toAnchor + lane * CLUSTER_ANCHORS.length;
+      if (from < nodes.length && to < nodes.length) addEdge(from, to);
+    }
+  };
+  CLUSTER_ANCHORS.forEach((_, anchorIndex) => {
+    const row = Math.floor(anchorIndex / ANCHOR_COLUMNS);
+    const column = anchorIndex % ANCHOR_COLUMNS;
+    if (column + 1 < ANCHOR_COLUMNS) connectAnchors(anchorIndex, anchorIndex + 1);
+    if (row + 1 < CLUSTER_ANCHORS.length / ANCHOR_COLUMNS) {
+      connectAnchors(anchorIndex, anchorIndex + ANCHOR_COLUMNS);
+      const diagonalColumn = row % 2 === 0 ? column + 1 : column - 1;
+      if (diagonalColumn >= 0 && diagonalColumn < ANCHOR_COLUMNS) {
+        connectAnchors(anchorIndex, anchorIndex + ANCHOR_COLUMNS + diagonalColumn - column);
+      }
+    }
   });
 
   const edges = [...edgeKeys]
@@ -198,7 +232,7 @@ const createFilaments = (THREE, graph, tier) => {
   graph.edges.forEach(([from, to], edgeIndex) => {
     positions.push(...graph.nodes[from], ...graph.nodes[to]);
     const color = edgeIndex % 5 === 0 ? magenta : violet;
-    const intensity = edgeIndex < 2 ? 1 : 2;
+    const intensity = edgeIndex < 2 ? 1 : 3.1;
     pushColor(colors, color, intensity);
     pushColor(colors, color, intensity);
   });
@@ -224,26 +258,32 @@ const createParticles = (THREE, graph, glowTexture, count, seed) => {
   const violet = new THREE.Color(PALETTE[0]);
   const magenta = new THREE.Color(PALETTE[1]);
   for (let index = 0; index < count; index += 1) {
-    const [from, to] = graph.edges[index % graph.edges.length];
+    const edgeIndex = index % graph.edges.length;
+    const sampleIndex = Math.floor(index / graph.edges.length);
+    const samplesOnEdge = Math.ceil((count - edgeIndex) / graph.edges.length);
+    const [from, to] = graph.edges[edgeIndex];
     const start = graph.nodes[from];
     const end = graph.nodes[to];
-    const towardNode = random() < 0.62;
-    const edgeProgress = random();
-    const progress = towardNode
-      ? (random() < 0.5 ? edgeProgress ** 2.8 : 1 - edgeProgress ** 2.8)
-      : edgeProgress;
-    const spread = 1.7 + random() * (towardNode ? 2.5 : 4.2);
+    const progress = (sampleIndex + random()) / samplesOnEdge;
+    const deltaX = end[0] - start[0];
+    const deltaY = end[1] - start[1];
+    const planarLength = Math.max(1, Math.hypot(deltaX, deltaY));
+    const strand = sampleIndex % 3 - 1;
+    const strandWidth = strand * (2.8 + random() * 2.4);
+    const spread = 1.4 + random() * 2.2;
     positions.push(
-      start[0] + (end[0] - start[0]) * progress + boundedGaussian(random) * spread,
-      start[1] + (end[1] - start[1]) * progress + boundedGaussian(random) * spread,
-      start[2] + (end[2] - start[2]) * progress + boundedGaussian(random) * spread * 0.65
+      start[0] + deltaX * progress - deltaY / planarLength * strandWidth
+        + boundedGaussian(random) * spread,
+      start[1] + deltaY * progress + deltaX / planarLength * strandWidth
+        + boundedGaussian(random) * spread,
+      start[2] + (end[2] - start[2]) * progress + boundedGaussian(random) * spread * 0.7
     );
-    const color = index % 7 === 0 ? magenta : violet;
-    pushColor(colors, color, index % 13 === 0 ? 1.8 : 0.95 + random() * 0.6);
+    const color = index % 3 === 0 ? magenta : violet;
+    pushColor(colors, color, index % 11 === 0 ? 2.6 : 1.45 + random() * 0.9);
   }
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 7,
+    size: 11.4,
     transparent: true,
     opacity: 0.98,
     alphaTest: 0.01,
@@ -276,13 +316,13 @@ const createNodes = (THREE, graph, glowTexture, quality, seed) => {
       const color = pointIndex === 0 ? pink : magenta;
       const intensity = nodeIndex === 0 && pointIndex === 0
         ? 1
-        : pointIndex < 2 ? 1.7 : 1 + random() * 0.5;
+        : pointIndex < 2 ? 2 : 1.2 + random() * 0.6;
       pushColor(colors, color, intensity);
     }
   });
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 9.4,
+    size: 11.2,
     transparent: true,
     opacity: 0.96,
     alphaTest: 0.01,
@@ -320,7 +360,7 @@ const createHotNodes = (THREE, graph, glowTexture, hotNodeCount) => {
   const colors = indices.flatMap(() => [gold.r, gold.g, gold.b]);
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 14,
+    size: 16,
     transparent: true,
     opacity: 1,
     alphaTest: 0.01,
@@ -353,11 +393,11 @@ const createDepthField = (THREE, graph, glowTexture, pointBudget, seed) => {
       center[2] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.z
     );
     const color = index % 9 === 0 ? pink : violet;
-    pushColor(colors, color, 0.8 + random() * 0.5);
+    pushColor(colors, color, 1 + random() * 0.6);
   }
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 4.6,
+    size: 5.2,
     transparent: true,
     opacity: 0.65,
     alphaTest: 0.01,
@@ -397,7 +437,7 @@ export const createCosmicWebLayer = (input) => {
     hotNodeCount,
     depthLayers: DEPTH_LAYERS,
     seed,
-    connection: "nearest-neighbour-spanning"
+    connection: "staggered-lattice-spanning"
   });
   const filaments = createFilaments(THREE, graph, quality.tier);
   const particles = createParticles(THREE, graph, glowTexture, quality.cosmicWebPoints, seed);

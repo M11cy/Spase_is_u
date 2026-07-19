@@ -1602,16 +1602,64 @@ body[data-stage="2"].parts-collected:not(.engine-assembled) .engine-puzzle-open 
   }
 
   .distance-scale {
-    right: 14px;
-    width: 104px;
+    top: 58px;
+    right: auto;
+    left: 50%;
+    width: min(210px, calc(100% - 112px));
+    padding: 6px 10px 7px;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 12px;
+    background: rgb(4 8 18 / 0.58);
+    backdrop-filter: blur(10px);
+    transform: translateX(-50%);
+    text-align: center;
+  }
+
+  .distance-scale p {
+    font-size: 7px;
+  }
+
+  .distance-scale strong {
+    margin-top: 1px;
+    font-size: 8px;
+    line-height: 1.25;
   }
 
   .distance-scale ol {
-    gap: 9px;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 7px;
+    margin-top: 5px;
+    padding: 0;
+  }
+
+  .distance-scale ol::after {
+    display: none;
   }
 
   .distance-scale li {
-    font-size: 7px;
+    display: none;
+    min-height: 0;
+    font-size: 6px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .distance-scale li.active,
+  .distance-scale li.active + li,
+  .distance-scale li:has(+ li.active) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .distance-scale li span {
+    position: static;
+    order: -1;
+    width: 4px;
+    height: 4px;
   }
 
   .object-panel {

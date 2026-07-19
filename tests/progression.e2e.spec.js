@@ -37,6 +37,12 @@ const screenshotMetrics = async (buffer) => {
     .toBuffer({ resolveWithObject: true });
   const subjectMask = new Uint8Array(info.width * info.height);
   const occupiedColumns = new Uint16Array(info.width);
+  const gridColumns = metadata.width > 500 ? 12 : 8;
+  const gridRows = metadata.width > 500 ? 8 : 10;
+  const gridCellCount = gridColumns * gridRows;
+  const purplePixelsByCell = new Uint32Array(gridCellCount);
+  const brightPixelsByCell = new Uint32Array(gridCellCount);
+  const pixelsByCell = new Uint32Array(gridCellCount);
   let luminousPixels = 0;
   let purpleMagentaPixels = 0;
   for (let offset = 0, pixel = 0; offset < data.length; offset += info.channels, pixel += 1) {
@@ -45,13 +51,21 @@ const screenshotMetrics = async (buffer) => {
     const blue = data[offset + 2];
     const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
     const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+    const x = pixel % info.width;
+    const y = (pixel - x) / info.width;
+    const gridColumn = Math.min(gridColumns - 1, Math.floor(x * gridColumns / info.width));
+    const gridRow = Math.min(gridRows - 1, Math.floor(y * gridRows / info.height));
+    const gridCell = gridRow * gridColumns + gridColumn;
+    pixelsByCell[gridCell] += 1;
     if (luminance >= 12) luminousPixels += 1;
     if (red >= 12 && blue >= 18 && red >= green * 1.22 && blue >= green * 1.32) {
       purpleMagentaPixels += 1;
+      purplePixelsByCell[gridCell] += 1;
     }
     if (luminance >= 20 && saturation >= 5) {
       subjectMask[pixel] = 1;
       occupiedColumns[pixel % info.width] += 1;
+      brightPixelsByCell[gridCell] += 1;
     }
   }
   const pixelCount = info.width * info.height;
@@ -84,9 +98,14 @@ const screenshotMetrics = async (buffer) => {
     }
     if (componentSize >= 3) brightComponentCount += 1;
   }
+  const occupiedGridRatio = (cellCounts) => Array.from(cellCounts)
+    .filter((count, index) => count / pixelsByCell[index] >= 0.006)
+    .length / gridCellCount;
   return Object.freeze({
     luminousRatio: luminousPixels / pixelCount,
     purpleMagentaRatio: purpleMagentaPixels / pixelCount,
+    purpleGridCoverage: occupiedGridRatio(purplePixelsByCell),
+    brightGridCoverage: occupiedGridRatio(brightPixelsByCell),
     occupiedWidthRatio: firstOccupiedColumn < 0
       ? 0
       : (lastOccupiedColumn - firstOccupiedColumn + 1) / info.width,
@@ -100,6 +119,9 @@ const captureSettledStage = async ({
   path,
   expectPurple = false,
   minimumLuminousRatio = 0.01,
+  minimumPurpleRatio = 0.0015,
+  minimumPurpleGridCoverage = 0,
+  minimumBrightGridCoverage = 0,
   minimumOccupiedWidth = 0,
   minimumBrightComponents = 0
 }) => {
@@ -110,7 +132,13 @@ const captureSettledStage = async ({
   const screenshot = await page.screenshot({ path: `${ARTIFACT_DIRECTORY}/${path}` });
   const metrics = await screenshotMetrics(screenshot);
   expect(metrics.luminousRatio).toBeGreaterThan(minimumLuminousRatio);
-  if (expectPurple) expect(metrics.purpleMagentaRatio).toBeGreaterThan(0.0015);
+  if (expectPurple) expect(metrics.purpleMagentaRatio).toBeGreaterThanOrEqual(minimumPurpleRatio);
+  if (minimumPurpleGridCoverage > 0) {
+    expect(metrics.purpleGridCoverage).toBeGreaterThanOrEqual(minimumPurpleGridCoverage);
+  }
+  if (minimumBrightGridCoverage > 0) {
+    expect(metrics.brightGridCoverage).toBeGreaterThanOrEqual(minimumBrightGridCoverage);
+  }
   if (minimumOccupiedWidth > 0) {
     expect(metrics.occupiedWidthRatio).toBeGreaterThan(minimumOccupiedWidth);
   }
@@ -496,7 +524,8 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     page,
     stage: 4,
     path: "local-group.png",
-    minimumBrightComponents: 30
+    minimumBrightComponents: 30,
+    minimumBrightGridCoverage: 0.42
   });
   await webButton.click();
   await expectStage(page, 5);
@@ -529,7 +558,10 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     page,
     stage: 5,
     path: "cosmic-web.png",
-    expectPurple: true
+    expectPurple: true,
+    minimumLuminousRatio: 0.04,
+    minimumPurpleRatio: 0.055,
+    minimumPurpleGridCoverage: 0.6
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await galaxyButton.click();
@@ -545,23 +577,40 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     page,
     stage: 4,
     path: "local-group-mobile.png",
-    minimumBrightComponents: 20
+    minimumBrightComponents: 20,
+    minimumBrightGridCoverage: 0.3
   });
   await webButton.click();
   await captureSettledStage({
     page,
     stage: 5,
     path: "cosmic-web-mobile.png",
-    expectPurple: true
+    expectPurple: true,
+    minimumLuminousRatio: 0.025,
+    minimumPurpleRatio: 0.035,
+    minimumPurpleGridCoverage: 0.4
   });
   const mobileDistanceRail = await page.locator("#distanceScale").boundingBox();
   const mobileLabels = page.locator(".space-label.visible");
   await expect(mobileLabels).not.toHaveCount(0);
   expect(mobileDistanceRail).not.toBeNull();
+  expect(mobileDistanceRail.width).toBeLessThanOrEqual(220);
+  expect(mobileDistanceRail.height).toBeLessThanOrEqual(92);
+  expect(Math.abs(
+    mobileDistanceRail.x + mobileDistanceRail.width / 2 - 390 / 2
+  )).toBeLessThanOrEqual(4);
+  expect(mobileDistanceRail.y).toBeGreaterThanOrEqual(48);
+  expect(mobileDistanceRail.y + mobileDistanceRail.height).toBeLessThanOrEqual(148);
   for (let index = 0; index < await mobileLabels.count(); index += 1) {
     const labelBounds = await mobileLabels.nth(index).boundingBox();
     expect(labelBounds).not.toBeNull();
-    expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(mobileDistanceRail.x - 6);
+    const overlapsRail = !(
+      labelBounds.x + labelBounds.width + 6 <= mobileDistanceRail.x
+      || labelBounds.x >= mobileDistanceRail.x + mobileDistanceRail.width + 6
+      || labelBounds.y + labelBounds.height + 6 <= mobileDistanceRail.y
+      || labelBounds.y >= mobileDistanceRail.y + mobileDistanceRail.height + 6
+    );
+    expect(overlapsRail).toBe(false);
   }
   await unknownButton.click();
   await expectStage(page, 6);
