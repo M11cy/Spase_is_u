@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
+import { createLocalGroupLayer } from "./local-group.js";
 import { createMilkyWayLayer } from "./milky-way.js";
 
 const createLayer = (overrides = {}) => createMilkyWayLayer({
@@ -161,5 +162,162 @@ describe("createMilkyWayLayer", () => {
 
     expect(disposeGeometry).toHaveBeenCalledOnce();
     expect(disposeMaterial).toHaveBeenCalledOnce();
+  });
+});
+
+const localGroupAnnotations = Object.freeze([
+  Object.freeze({ id: "group-milky-way", stage: 4, position: [-34, 4, -142], size: 18, image: "/mw.jpg", color: 0xdde8ff }),
+  Object.freeze({ id: "group-andromeda", stage: 4, position: [56, 13, -160], size: 24, image: "/a.jpg", color: 0xffffff }),
+  Object.freeze({ id: "group-triangulum", stage: 4, position: [20, -26, -180], size: 11, image: "/m33.jpg", color: 0xcddcff }),
+  Object.freeze({ id: "group-lmc", stage: 4, position: [-55, -10, -130], size: 10, color: 0xb9ccff }),
+  Object.freeze({ id: "group-m32", stage: 4, position: [72, 18, -166], size: 8, color: 0xe7edff })
+]);
+
+const createLocalGroup = (overrides = {}) => createLocalGroupLayer({
+  THREE,
+  annotations: localGroupAnnotations,
+  quality: { tier: "high" },
+  stage: 4,
+  glowTexture: null,
+  textureFor: () => null,
+  createMarker: () => new THREE.Sprite(),
+  reducedMotion: false,
+  ...overrides
+});
+
+describe("createLocalGroupLayer", () => {
+  it("creates named galaxies with distinct depth and aspect", () => {
+    const layer = createLocalGroup();
+    const galaxies = localGroupAnnotations.map(({ id }) => layer.root.getObjectByName(id));
+
+    expect(galaxies.every(Boolean)).toBe(true);
+    expect(new Set(galaxies.map(({ position }) => position.z)).size).toBe(5);
+    expect(galaxies[1].scale.x).not.toBe(galaxies[1].scale.y);
+
+    layer.dispose();
+  });
+
+  it("renders textured discs, cores, and star clouds with deterministic profile-specific form", () => {
+    const texture = new THREE.Texture();
+    const first = createLocalGroup({ textureFor: () => texture });
+    const second = createLocalGroup({ textureFor: () => texture });
+    const andromeda = first.root.getObjectByName("group-andromeda");
+    const lmc = first.root.getObjectByName("group-lmc");
+    const m32 = first.root.getObjectByName("group-m32");
+    const disc = andromeda.getObjectByName("group-andromeda-disc");
+    const stars = andromeda.getObjectByName("group-andromeda-stars");
+
+    expect(andromeda.userData.profile).toBe("spiral");
+    expect(lmc.userData.profile).toBe("irregular");
+    expect(m32.userData.profile).toBe("elliptical");
+    expect(disc.material.map).toBe(texture);
+    expect(andromeda.getObjectByName("group-andromeda-core")).toBeTruthy();
+    expect(stars.isPoints).toBe(true);
+    expect(stars.geometry.getAttribute("position").array)
+      .toEqual(second.root.getObjectByName("group-andromeda-stars").geometry.getAttribute("position").array);
+    expect(andromeda.rotation.z).not.toBe(lmc.rotation.z);
+
+    first.dispose();
+    second.dispose();
+  });
+
+  it("keeps annotations interactive and applies presence and high-quality parallax", () => {
+    const layer = createLocalGroup();
+
+    expect(layer.interactive).toHaveLength(localGroupAnnotations.length);
+    expect(layer.interactive[0].userData.annotation).toMatchObject(localGroupAnnotations[0]);
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    layer.setPresence(0.5);
+    expect(layer.root.visible).toBe(true);
+    expect(layer.root.getObjectByName("group-andromeda-disc").material.opacity).toBeGreaterThan(0);
+
+    layer.dispose();
+  });
+
+  it("fails closed for invalid inputs, honors reduced motion, and disposes once", () => {
+    expect(() => createLocalGroup({ quality: null })).toThrow(TypeError);
+    expect(() => createLocalGroup({ textureFor: null })).toThrow(TypeError);
+    const malformedLayer = createLocalGroup({
+      annotations: [null, { id: "bad", position: [1, 2] }],
+      reducedMotion: true
+    });
+    const layer = createLocalGroup();
+    const marker = layer.root.getObjectByName("group-milky-way-marker");
+    const dispose = vi.spyOn(marker.material, "dispose");
+
+    expect(malformedLayer.interactive).toHaveLength(0);
+    expect(malformedLayer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+    malformedLayer.dispose();
+    layer.dispose();
+    layer.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("skips duplicate galaxy identities without mutating frozen annotation sources", () => {
+    const source = Object.freeze({
+      id: "group-andromeda",
+      stage: 4,
+      position: Object.freeze([56, 13, -160]),
+      size: 24,
+      color: 0xffffff
+    });
+    const annotations = Object.freeze([source, source, null]);
+    const layer = createLocalGroup({ annotations });
+
+    expect(layer.interactive).toHaveLength(1);
+    expect(layer.root.children.filter(({ name }) => name === source.id)).toHaveLength(1);
+    expect(source).toEqual({
+      id: "group-andromeda",
+      stage: 4,
+      position: [56, 13, -160],
+      size: 24,
+      color: 0xffffff
+    });
+
+    layer.dispose();
+  });
+
+  it("keeps markers independent of visual scale and requires the configured stage", () => {
+    const layer = createLocalGroup({
+      createMarker: () => {
+        const marker = new THREE.Sprite();
+        marker.scale.set(12, 12, 1);
+        return marker;
+      }
+    });
+    const marker = layer.root.getObjectByName("group-andromeda-marker");
+    const worldScale = new THREE.Vector3();
+    layer.root.updateMatrixWorld(true);
+    marker.getWorldScale(worldScale);
+    const wrongStage = createLocalGroup({
+      annotations: [{ ...localGroupAnnotations[0], stage: 5 }]
+    });
+
+    expect(worldScale.x).toBeCloseTo(12);
+    expect(worldScale.y).toBeCloseTo(12);
+    expect(wrongStage.interactive).toHaveLength(0);
+
+    layer.dispose();
+    wrongStage.dispose();
+  });
+
+  it("uses oriented texture planes and resolves colliding source depths deterministically", () => {
+    const duplicateDepth = [
+      { ...localGroupAnnotations[0], position: [-34, 4, -142] },
+      { ...localGroupAnnotations[1], position: [56, 13, -142] }
+    ];
+    const first = createLocalGroup({ annotations: duplicateDepth });
+    const second = createLocalGroup({ annotations: duplicateDepth });
+    const milkyWay = first.root.getObjectByName("group-milky-way");
+    const andromeda = first.root.getObjectByName("group-andromeda");
+    const disc = andromeda.getObjectByName("group-andromeda-disc");
+
+    expect(disc.isMesh).toBe(true);
+    expect(disc.material.map).not.toBeNull();
+    expect(milkyWay.position.z).not.toBe(andromeda.position.z);
+    expect(andromeda.position.z).toBe(second.root.getObjectByName("group-andromeda").position.z);
+
+    first.dispose();
+    second.dispose();
   });
 });

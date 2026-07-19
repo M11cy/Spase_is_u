@@ -24,6 +24,7 @@ import {
   resolveCameraPose
 } from "./scene/create-scene.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
+import { createLocalGroupLayer } from "./scene/layers/local-group.js";
 import { createMilkyWayLayer } from "./scene/layers/milky-way.js";
 import { selectEarthTextureRoutes } from "./scene/earth-assets.js";
 import { createSolarSystemLayer } from "./scene/layers/solar-system.js";
@@ -607,6 +608,9 @@ const earthTextureRoutes = Object.freeze({
 const solarTextureSources = Object.freeze([
   ...new Set(solarPlanets.flatMap(({ image }) => image ? [image] : []))
 ]);
+const localGroupTextureSources = Object.freeze([
+  ...new Set(groupGalaxyAnnotationSources.flatMap(({ image }) => image ? [image] : []))
+]);
 const introController = createIntroController({
   root: introLayer,
   startButton: startJourneyButton,
@@ -626,6 +630,15 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 });
 const solarTextures = new Map(solarTextureSources.map((url, index) => (
   [url, solarTextureResources[index]]
+)));
+const localGroupTextureResources = await Promise.all(
+  localGroupTextureSources.map((url) => textureStore.load(url, 0x10152a))
+);
+localGroupTextureResources.forEach(({ texture }) => {
+  texture.anisotropy = maxAnisotropy;
+});
+const localGroupTextures = new Map(localGroupTextureSources.map((url, index) => (
+  [url, localGroupTextureResources[index]]
 )));
 const glowDiscTexture = createGlowDiscTexture();
 solarTextures.set("glow", glowDiscTexture);
@@ -1071,71 +1084,18 @@ const milkyWayLayer = createMilkyWayLayer({
 const galaxyAnnotations = Object.freeze(milkyWayLayer.interactive.map((marker) => marker.userData.annotation));
 group.add(milkyWayLayer.root);
 
-const localGroup = new THREE.Group();
-for (let i = 0; i < 260; i += 1) {
-  const radius = 28 + Math.random() * 520;
-  const angle = Math.random() * Math.PI * 2;
-  const material = new THREE.SpriteMaterial({
-    map: glowDiscTexture,
-    color: i % 5 === 0 ? 0xffffff : 0xb8ccff,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending
-  });
-  const dot = new THREE.Sprite(material);
-  dot.position.set(
-    Math.cos(angle) * radius + (Math.random() - 0.5) * 70,
-    8 + (Math.random() - 0.5) * 330,
-    -138 + Math.sin(angle) * radius * 0.42 + (Math.random() - 0.5) * 58
-  );
-  const size = 5 + Math.random() * 18;
-  dot.scale.set(size, size, 1);
-  dot.userData.baseOpacity = 0.24 + Math.random() * 0.5;
-  dot.renderOrder = 5;
-  localGroup.add(dot);
-}
-for (let i = 0; i < 58; i += 1) {
-  const material = new THREE.SpriteMaterial({
-    map: glowDiscTexture,
-    color: 0xe8efff,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending
-  });
-  const dot = new THREE.Sprite(material);
-  dot.position.set((Math.random() - 0.5) * 520, 8 + (Math.random() - 0.5) * 220, -138 + (Math.random() - 0.5) * 88);
-  const size = 12 + Math.random() * 30;
-  dot.scale.set(size, size, 1);
-  dot.userData.baseOpacity = 0.36 + Math.random() * 0.48;
-  dot.renderOrder = 5;
-  localGroup.add(dot);
-}
-const groupGalaxyAnnotations = Object.freeze(groupGalaxyAnnotationSources.map((source) => {
-  const material = new THREE.SpriteMaterial({
-    map: glowDiscTexture,
-    color: source.color,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending
-  });
-  const dot = new THREE.Sprite(material);
-  dot.position.set(...source.position);
-  dot.scale.set(source.size, source.size, 1);
-  dot.userData.baseOpacity = 0.9;
-  const annotation = Object.freeze({ ...source, object3D: dot });
-  dot.userData.annotation = annotation;
-  dot.renderOrder = 6;
-  localGroup.add(dot);
-  interactive.push(dot);
-  return annotation;
-}));
-group.add(localGroup);
+const localGroupLayer = createLocalGroupLayer({
+  THREE,
+  annotations: groupGalaxyAnnotationSources,
+  quality,
+  stage: STAGE_INDEX["local-group"],
+  textureFor: (source) => localGroupTextures.get(source.image)?.texture ?? null,
+  glowTexture: glowDiscTexture,
+  createMarker: createGalaxyMarker,
+  reducedMotion
+});
+const groupGalaxyAnnotations = Object.freeze(localGroupLayer.interactive.map((marker) => marker.userData.annotation));
+group.add(localGroupLayer.root);
 
 const cosmicWebGeometry = new THREE.BufferGeometry();
 const cosmicWebPositions = [];
@@ -1242,7 +1202,8 @@ const sceneManager = createScene({
   layers: Object.freeze([
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
     Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer }),
-    Object.freeze({ stage: STAGE_INDEX["milky-way"], layer: milkyWayLayer })
+    Object.freeze({ stage: STAGE_INDEX["milky-way"], layer: milkyWayLayer }),
+    Object.freeze({ stage: STAGE_INDEX["local-group"], layer: localGroupLayer })
   ]),
   interactive: Object.freeze([...interactive])
 });
@@ -1549,12 +1510,6 @@ function updateStage() {
 
   updateLabels(layerOpacities);
 
-  const localGroupOpacity = layerOpacities[STAGE_INDEX["local-group"]];
-  localGroup.visible = localGroupOpacity > 0.03;
-  localGroup.children.forEach((dot) => {
-    dot.material.opacity = dot.userData.baseOpacity * localGroupOpacity;
-    dot.visible = localGroup.visible;
-  });
   const cosmicWebOpacity = layerOpacities[STAGE_INDEX["cosmic-web"]];
   cosmicWebPoints.visible = cosmicWebOpacity > 0.03;
   cosmicWebPoints.material.opacity = cosmicWebOpacity * 1.35;
@@ -1591,6 +1546,10 @@ function startJourney() {
 function onPointerMove(event) {
   if (!journeyStarted) return;
   milkyWayLayer.updateParallax({
+    x: (event.clientX / window.innerWidth) * 2 - 1,
+    y: (event.clientY / window.innerHeight) * -2 + 1
+  });
+  localGroupLayer.updateParallax({
     x: (event.clientX / window.innerWidth) * 2 - 1,
     y: (event.clientY / window.innerHeight) * -2 + 1
   });
@@ -1703,7 +1662,6 @@ const localVisualRoots = Object.freeze([
   midSpaceStars,
   nearSpaceStars,
   hyperdriveLines,
-  localGroup,
   cosmicWebPoints,
   cosmicWebPlane,
   cosmicDepthStars
@@ -1744,6 +1702,7 @@ function disposeExperience() {
   sceneManager.dispose();
   earthTextureResource.release();
   earthCloudResource.release();
+  localGroupTextureResources.forEach((resource) => resource.release());
   textureStore.dispose();
   glowDiscTexture.dispose();
 }
