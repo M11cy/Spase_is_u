@@ -39,6 +39,7 @@ const CLUSTER_ANCHORS = Object.freeze([
 const DEPTH_FIELD_SPREAD = Object.freeze({ x: 46, y: 38, z: 18 });
 const GAUSSIAN_LIMIT = 2.5;
 const VOLUME_INSET = 1;
+const FILAMENT_SEGMENTS_PER_EDGE = 10;
 const NODE_POINTS_PER_TIER = Object.freeze({ high: 18, medium: 12, economy: 8 });
 const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
   "Group",
@@ -94,6 +95,12 @@ const clampPositionToVolume = ([x, y, z]) => [
   clamp(x, VOLUME_BOUNDS.minX, VOLUME_BOUNDS.maxX),
   clamp(y, VOLUME_BOUNDS.minY, VOLUME_BOUNDS.maxY),
   clamp(z, VOLUME_BOUNDS.minZ, VOLUME_BOUNDS.maxZ)
+];
+
+const clampPositionToInsetVolume = ([x, y, z]) => [
+  clamp(x, VOLUME_BOUNDS.minX + VOLUME_INSET, VOLUME_BOUNDS.maxX - VOLUME_INSET),
+  clamp(y, VOLUME_BOUNDS.minY + VOLUME_INSET, VOLUME_BOUNDS.maxY - VOLUME_INSET),
+  clamp(z, VOLUME_BOUNDS.minZ + VOLUME_INSET, VOLUME_BOUNDS.maxZ - VOLUME_INSET)
 ];
 
 const clampPositionsToVolume = (positions) => {
@@ -224,17 +231,65 @@ const createGeometry = (THREE, positions, colors) => {
   return geometry;
 };
 
-const createFilaments = (THREE, graph, tier) => {
+const sampleCubicBezier = (start, controlOne, controlTwo, end, progress) => {
+  const inverseProgress = 1 - progress;
+  const startWeight = inverseProgress ** 3;
+  const controlOneWeight = 3 * inverseProgress ** 2 * progress;
+  const controlTwoWeight = 3 * inverseProgress * progress ** 2;
+  const endWeight = progress ** 3;
+  return start.map((value, axis) => (
+    value * startWeight
+    + controlOne[axis] * controlOneWeight
+    + controlTwo[axis] * controlTwoWeight
+    + end[axis] * endWeight
+  ));
+};
+
+const createEdgeCurve = (start, end, edgeIndex) => {
+  const deltaX = end[0] - start[0];
+  const deltaY = end[1] - start[1];
+  const planarLength = Math.max(1, Math.hypot(deltaX, deltaY));
+  const lateralMagnitude = Math.min(24, Math.max(9, planarLength * 0.16));
+  const phase = (edgeIndex + 1) * 2.399963229728653;
+  const lateralDirection = Math.sin(phase) >= 0 ? 1 : -1;
+  const normalX = -deltaY / planarLength * lateralDirection;
+  const normalY = deltaX / planarLength * lateralDirection;
+  const verticalMagnitude = 4 + Math.abs(Math.cos(phase)) * 7;
+  const controlOne = clampPositionToInsetVolume([
+    start[0] + deltaX / 3 + normalX * lateralMagnitude,
+    start[1] + deltaY / 3 + normalY * lateralMagnitude,
+    start[2] + (end[2] - start[2]) / 3 + Math.sin(phase * 1.7) * verticalMagnitude
+  ]);
+  const controlTwo = clampPositionToInsetVolume([
+    start[0] + deltaX * 2 / 3 + normalX * lateralMagnitude * (0.68 + Math.abs(Math.cos(phase)) * 0.24),
+    start[1] + deltaY * 2 / 3 + normalY * lateralMagnitude * (0.68 + Math.abs(Math.cos(phase)) * 0.24),
+    start[2] + (end[2] - start[2]) * 2 / 3 + Math.cos(phase * 1.3) * verticalMagnitude
+  ]);
+  return Object.freeze({
+    sample: (progress) => sampleCubicBezier(start, controlOne, controlTwo, end, progress)
+  });
+};
+
+const createEdgeCurves = (graph) => Object.freeze(graph.edges.map(([from, to], edgeIndex) => (
+  createEdgeCurve(graph.nodes[from], graph.nodes[to], edgeIndex)
+)));
+
+const createFilaments = (THREE, graph, curves, tier) => {
   const positions = [];
   const colors = [];
   const violet = new THREE.Color(PALETTE[0]);
   const magenta = new THREE.Color(PALETTE[1]);
-  graph.edges.forEach(([from, to], edgeIndex) => {
-    positions.push(...graph.nodes[from], ...graph.nodes[to]);
+  graph.edges.forEach((_, edgeIndex) => {
     const color = edgeIndex % 5 === 0 ? magenta : violet;
     const intensity = edgeIndex < 2 ? 1 : 3.1;
-    pushColor(colors, color, intensity);
-    pushColor(colors, color, intensity);
+    for (let segmentIndex = 0; segmentIndex < FILAMENT_SEGMENTS_PER_EDGE; segmentIndex += 1) {
+      positions.push(
+        ...curves[edgeIndex].sample(segmentIndex / FILAMENT_SEGMENTS_PER_EDGE),
+        ...curves[edgeIndex].sample((segmentIndex + 1) / FILAMENT_SEGMENTS_PER_EDGE)
+      );
+      pushColor(colors, color, intensity);
+      pushColor(colors, color, intensity);
+    }
   });
   const material = new THREE.LineBasicMaterial({
     transparent: true,
@@ -251,12 +306,13 @@ const createFilaments = (THREE, graph, tier) => {
   return filaments;
 };
 
-const createParticles = (THREE, graph, glowTexture, count, seed) => {
+const createParticles = (THREE, graph, curves, glowTexture, count, seed) => {
   const random = createSeededRandom(forkSeed(seed, 0x5f356495));
   const positions = [];
   const colors = [];
   const violet = new THREE.Color(PALETTE[0]);
   const magenta = new THREE.Color(PALETTE[1]);
+  const pink = new THREE.Color(PALETTE[2]);
   for (let index = 0; index < count; index += 1) {
     const edgeIndex = index % graph.edges.length;
     const sampleIndex = Math.floor(index / graph.edges.length);
@@ -271,14 +327,15 @@ const createParticles = (THREE, graph, glowTexture, count, seed) => {
     const strand = sampleIndex % 3 - 1;
     const strandWidth = strand * (2.8 + random() * 2.4);
     const spread = 1.4 + random() * 2.2;
+    const basePosition = curves[edgeIndex].sample(progress);
     positions.push(
-      start[0] + deltaX * progress - deltaY / planarLength * strandWidth
+      basePosition[0] - deltaY / planarLength * strandWidth
         + boundedGaussian(random) * spread,
-      start[1] + deltaY * progress + deltaX / planarLength * strandWidth
+      basePosition[1] + deltaX / planarLength * strandWidth
         + boundedGaussian(random) * spread,
-      start[2] + (end[2] - start[2]) * progress + boundedGaussian(random) * spread * 0.7
+      basePosition[2] + boundedGaussian(random) * spread * 0.7
     );
-    const color = index % 3 === 0 ? magenta : violet;
+    const color = index % 7 === 0 ? pink : index % 3 === 0 ? magenta : violet;
     pushColor(colors, color, index % 11 === 0 ? 2.6 : 1.45 + random() * 0.9);
   }
   const material = new THREE.PointsMaterial({
@@ -426,6 +483,7 @@ export const createCosmicWebLayer = (input) => {
   const nodeBudget = NODE_BUDGET[quality.tier];
   const hotNodeCount = Math.round(nodeBudget * HOT_NODE_RATIO);
   const graph = buildGraph(seed, nodeBudget);
+  const curves = createEdgeCurves(graph);
   const root = new THREE.Group();
   root.name = "cosmic-web-layer";
   root.visible = false;
@@ -439,8 +497,8 @@ export const createCosmicWebLayer = (input) => {
     seed,
     connection: "staggered-lattice-spanning"
   });
-  const filaments = createFilaments(THREE, graph, quality.tier);
-  const particles = createParticles(THREE, graph, glowTexture, quality.cosmicWebPoints, seed);
+  const filaments = createFilaments(THREE, graph, curves, quality.tier);
+  const particles = createParticles(THREE, graph, curves, glowTexture, quality.cosmicWebPoints, seed);
   const nodes = createNodes(THREE, graph, glowTexture, quality, seed);
   const hotNodes = createHotNodes(THREE, graph, glowTexture, hotNodeCount);
   const depth = createDepthField(THREE, graph, glowTexture, quality.cosmicWebPoints, seed);

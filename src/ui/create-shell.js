@@ -24,6 +24,9 @@ export const setLabelAccessibility = (label, isVisible) => {
 
 export function createShell({ root, stages }) {
   document.body.classList.add("intro-pending");
+  const distanceRouteSummary = stages
+    .map((stage) => `${stage.label}: ${stage.distance}`)
+    .join(". ");
   root.innerHTML = `
     <main class="experience">
     <section id="introLayer" class="cinematic-intro" aria-label="Начало путешествия">
@@ -127,11 +130,12 @@ export function createShell({ root, stages }) {
         aria-expanded="true"
         aria-controls="distanceScale"
       ></button>
-      <aside id="distanceScale" class="distance-scale" aria-label="Шкала расстояния от Земли" data-expanded="true">
+      <aside id="distanceScale" class="distance-scale" aria-label="Шкала расстояния от Земли" aria-describedby="distanceScaleA11ySummary" data-expanded="true">
         <p>От Земли</p>
         <strong id="distanceValue"></strong>
-        <ol id="distanceMarkers"></ol>
+        <ol id="distanceMarkers" aria-hidden="true"></ol>
       </aside>
+      <p id="distanceScaleA11ySummary" class="sr-only">${distanceRouteSummary}</p>
       <section id="unknownLayer" class="unknown-layer" aria-label="Неизвестный масштаб">
         <div>
           <strong>?</strong>

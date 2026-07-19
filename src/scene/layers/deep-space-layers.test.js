@@ -613,6 +613,38 @@ const createCosmicWeb = (overrides = {}) => createCosmicWebLayer({
   ...overrides
 });
 
+const pointAt = (positions, index) => [
+  positions.getX(index),
+  positions.getY(index),
+  positions.getZ(index)
+];
+
+const expectPointToBeCloseTo = (actual, expected) => {
+  actual.forEach((value, axis) => expect(value).toBeCloseTo(expected[axis], 4));
+};
+
+const distanceToSegment = (point, start, end) => {
+  const delta = end.map((value, axis) => value - start[axis]);
+  const lengthSquared = delta.reduce((sum, value) => sum + value ** 2, 0);
+  const progress = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, (
+    point.reduce((sum, value, axis) => sum + (value - start[axis]) * delta[axis], 0)
+      / lengthSquared
+  )));
+  return Math.hypot(...point.map((value, axis) => (
+    value - (start[axis] + delta[axis] * progress)
+  )));
+};
+
+const distanceToPolyline = (point, positions, firstPoint, segmentCount) => (
+  Math.min(...Array.from({ length: segmentCount }, (_, segmentIndex) => (
+    distanceToSegment(
+      point,
+      pointAt(positions, firstPoint + segmentIndex * 2),
+      pointAt(positions, firstPoint + segmentIndex * 2 + 1)
+    )
+  )))
+);
+
 describe("createCosmicWebLayer", () => {
   it.each([
     [{ width: 1920, height: 1080, dpr: 2, cores: 12, reducedMotion: false }, "high", 18000],
@@ -744,6 +776,79 @@ describe("createCosmicWebLayer", () => {
     expect(layer.graph.edges.length).toBeLessThanOrEqual(layer.graph.nodes.length * 3);
 
     layer.dispose();
+  });
+
+  it("renders curved organic filament segments inside every published volume and keeps particles on the sampled curves", () => {
+    const tiers = [
+      ["high", 18000],
+      ["medium", 9800],
+      ["economy", 5200]
+    ];
+
+    tiers.forEach(([tier, cosmicWebPoints]) => {
+      const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
+      const filaments = layer.root.getObjectByName("cosmic-web-filaments");
+      const positions = filaments.geometry.getAttribute("position");
+      const { volume } = layer.root.userData.structure;
+      const meaningfulEdges = [];
+
+      expect(positions.count).toBe(layer.graph.edges.length * 20);
+      layer.graph.edges.forEach(([from, to], edgeIndex) => {
+        const firstPoint = edgeIndex * 20;
+        const start = layer.graph.nodes[from];
+        const end = layer.graph.nodes[to];
+        const intermediateDistances = Array.from({ length: 9 }, (_, segmentIndex) => (
+          distanceToSegment(pointAt(positions, firstPoint + segmentIndex * 2 + 1), start, end)
+        ));
+
+        expectPointToBeCloseTo(pointAt(positions, firstPoint), start);
+        expectPointToBeCloseTo(pointAt(positions, firstPoint + 19), end);
+        for (let segmentIndex = 0; segmentIndex < 9; segmentIndex += 1) {
+          expectPointToBeCloseTo(
+            pointAt(positions, firstPoint + segmentIndex * 2 + 1),
+            pointAt(positions, firstPoint + segmentIndex * 2 + 2)
+          );
+        }
+        if (Math.hypot(...end.map((value, axis) => value - start[axis])) > 15) {
+          meaningfulEdges.push(Math.max(...intermediateDistances) > 1);
+        }
+      });
+
+      expect(meaningfulEdges.length).toBeGreaterThan(0);
+      expect(meaningfulEdges.filter(Boolean).length / meaningfulEdges.length).toBeGreaterThanOrEqual(0.75);
+      Array.from({ length: positions.count }, (_, index) => pointAt(positions, index)).forEach(([x, y, z]) => {
+        expect([x, y, z].every(Number.isFinite)).toBe(true);
+        expect(Math.abs(x)).toBeLessThanOrEqual(volume.width / 2);
+        expect(Math.abs(y)).toBeLessThanOrEqual(volume.height / 2);
+        expect(z).toBeGreaterThanOrEqual(volume.centerZ - volume.depth / 2);
+        expect(z).toBeLessThanOrEqual(volume.centerZ + volume.depth / 2);
+      });
+
+      const particles = layer.root.getObjectByName("cosmic-web-particles")
+        .geometry.getAttribute("position");
+      const curveFollowerComparisons = Array.from({ length: particles.count }, (_, particleIndex) => {
+        const edgeIndex = particleIndex % layer.graph.edges.length;
+        const sampleIndex = Math.floor(particleIndex / layer.graph.edges.length);
+        const samplesOnEdge = Math.ceil((particles.count - edgeIndex) / layer.graph.edges.length);
+        if (sampleIndex / samplesOnEdge < 0.25 || sampleIndex / samplesOnEdge > 0.75) return null;
+        const [from, to] = layer.graph.edges[edgeIndex];
+        const start = layer.graph.nodes[from];
+        const end = layer.graph.nodes[to];
+        const firstPoint = edgeIndex * 20;
+        const curveBend = Math.max(...Array.from({ length: 9 }, (_, segmentIndex) => (
+          distanceToSegment(pointAt(positions, firstPoint + segmentIndex * 2 + 1), start, end)
+        )));
+        if (curveBend <= 6) return null;
+        const particle = pointAt(particles, particleIndex);
+        return distanceToPolyline(particle, positions, firstPoint, 10)
+          < distanceToSegment(particle, start, end);
+      }).filter((comparison) => comparison !== null);
+
+      expect(curveFollowerComparisons.length).toBeGreaterThan(200);
+      expect(curveFollowerComparisons.filter(Boolean).length / curveFollowerComparisons.length)
+        .toBeGreaterThanOrEqual(0.75);
+      layer.dispose();
+    });
   });
 
   it.each([

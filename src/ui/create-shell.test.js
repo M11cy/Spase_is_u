@@ -90,6 +90,23 @@ describe("createShell stage access", () => {
     expect(shell.distanceSummary.getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("exposes a complete distance route to assistive technology while keeping visual markers decorative", () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const shell = createShell({ root: document.querySelector("#app"), stages });
+    const routeSummary = shell.root.querySelector("#distanceScaleA11ySummary");
+
+    expect(routeSummary).not.toBeNull();
+    expect(routeSummary.classList.contains("sr-only")).toBe(true);
+    stages.forEach((stage) => {
+      expect(routeSummary.textContent).toContain(`${stage.label}: ${stage.distance}`);
+    });
+    expect(shell.distanceScale.getAttribute("aria-describedby"))
+      .toBe("distanceScaleA11ySummary");
+    expect(shell.distanceMarkers.getAttribute("aria-hidden")).toBe("true");
+
+    shell.dispose();
+  });
+
   it("uses the supplied stage label when a navigation alias is unavailable", () => {
     document.body.innerHTML = '<div id="app"></div>';
     const shell = createShell({
