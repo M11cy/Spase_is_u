@@ -1,5 +1,6 @@
 import { ShaderMaterial, Vector2 } from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -36,7 +37,9 @@ const createDefaultComposer = ({ renderer, scene, camera, quality }) => {
   let bloomComposer = null;
   let finalComposer = null;
   let bloomPass = null;
+  let compositeMaterial = null;
   let compositePass = null;
+  let outputPass = null;
   try {
     bloomComposer = new EffectComposer(renderer);
     bloomComposer.renderToScreen = false;
@@ -51,7 +54,7 @@ const createDefaultComposer = ({ renderer, scene, camera, quality }) => {
 
     finalComposer = new EffectComposer(renderer);
     finalComposer.addPass(new RenderPass(scene, camera));
-    compositePass = new ShaderPass(new ShaderMaterial({
+    compositeMaterial = new ShaderMaterial({
       uniforms: {
         baseTexture: { value: null },
         bloomTexture: { value: bloomComposer.renderTarget2.texture }
@@ -60,10 +63,18 @@ const createDefaultComposer = ({ renderer, scene, camera, quality }) => {
       fragmentShader: COMPOSITE_FRAGMENT_SHADER,
       depthTest: false,
       depthWrite: false
-    }), "baseTexture");
+    });
+    compositePass = new ShaderPass(compositeMaterial, "baseTexture");
     finalComposer.addPass(compositePass);
+    outputPass = new OutputPass();
+    finalComposer.addPass(outputPass);
   } catch (error) {
-    compositePass?.dispose();
+    outputPass?.dispose();
+    if (compositePass) {
+      compositePass.dispose();
+    } else {
+      compositeMaterial?.dispose();
+    }
     bloomPass?.dispose();
     finalComposer?.dispose();
     bloomComposer?.dispose();
@@ -95,6 +106,7 @@ const createDefaultComposer = ({ renderer, scene, camera, quality }) => {
       disposed = true;
       bloomPass.dispose();
       compositePass.dispose();
+      outputPass.dispose();
       bloomComposer.dispose();
       finalComposer.dispose();
     }

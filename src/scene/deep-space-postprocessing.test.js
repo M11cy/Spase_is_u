@@ -10,8 +10,11 @@ import {
 const addonRecords = vi.hoisted(() => ({
   blooms: [],
   composers: [],
+  compositeMaterials: [],
   failBloomCreation: false,
+  failOutputCreation: false,
   failShaderCreation: false,
+  outputPasses: [],
   renderPasses: [],
   shaderPasses: []
 }));
@@ -34,11 +37,23 @@ vi.mock("three/addons/postprocessing/EffectComposer.js", () => ({
 vi.mock("three/addons/postprocessing/ShaderPass.js", () => ({
   ShaderPass: class {
     constructor(material, textureID) {
+      material.dispose = vi.fn(material.dispose.bind(material));
+      addonRecords.compositeMaterials.push(material);
       if (addonRecords.failShaderCreation) throw new Error("composite unsupported");
       this.material = material;
       this.textureID = textureID;
-      this.dispose = vi.fn();
+      this.dispose = vi.fn(() => material.dispose());
       addonRecords.shaderPasses.push(this);
+    }
+  }
+}));
+
+vi.mock("three/addons/postprocessing/OutputPass.js", () => ({
+  OutputPass: class {
+    constructor() {
+      if (addonRecords.failOutputCreation) throw new Error("output unsupported");
+      this.dispose = vi.fn();
+      addonRecords.outputPasses.push(this);
     }
   }
 }));
@@ -70,9 +85,12 @@ vi.mock("three/addons/postprocessing/UnrealBloomPass.js", () => ({
 beforeEach(() => {
   addonRecords.blooms.splice(0);
   addonRecords.composers.splice(0);
+  addonRecords.compositeMaterials.splice(0);
+  addonRecords.outputPasses.splice(0);
   addonRecords.renderPasses.splice(0);
   addonRecords.shaderPasses.splice(0);
   addonRecords.failBloomCreation = false;
+  addonRecords.failOutputCreation = false;
   addonRecords.failShaderCreation = false;
 });
 
@@ -117,6 +135,8 @@ describe("createDeepSpacePostprocessing", () => {
     const bloom = addonRecords.blooms.at(-1);
     const [bloomRenderPass, baseRenderPass] = addonRecords.renderPasses.slice(-2);
     const compositePass = addonRecords.shaderPasses.at(-1);
+    const compositeMaterial = addonRecords.compositeMaterials.at(-1);
+    const outputPass = addonRecords.outputPasses.at(-1);
     const renderMasks = [];
     bloomComposer.render.mockImplementation(() => renderMasks.push(camera.layers.mask));
     finalComposer.render.mockImplementation(() => renderMasks.push(camera.layers.mask));
@@ -140,6 +160,7 @@ describe("createDeepSpacePostprocessing", () => {
     expect(bloomComposer.addPass).toHaveBeenNthCalledWith(2, bloom);
     expect(finalComposer.addPass).toHaveBeenNthCalledWith(1, baseRenderPass);
     expect(finalComposer.addPass).toHaveBeenNthCalledWith(2, compositePass);
+    expect(finalComposer.addPass).toHaveBeenNthCalledWith(3, outputPass);
     expect(compositePass.textureID).toBe("baseTexture");
     expect(compositePass.material.uniforms.bloomTexture.value)
       .toBe(bloomComposer.renderTarget2.texture);
@@ -153,6 +174,8 @@ describe("createDeepSpacePostprocessing", () => {
     expect(finalComposer.setSize).toHaveBeenCalledWith(1600, 900);
     expect(bloom.dispose).toHaveBeenCalledOnce();
     expect(compositePass.dispose).toHaveBeenCalledOnce();
+    expect(compositeMaterial.dispose).toHaveBeenCalledOnce();
+    expect(outputPass.dispose).toHaveBeenCalledOnce();
     expect(bloomComposer.dispose).toHaveBeenCalledOnce();
     expect(finalComposer.dispose).toHaveBeenCalledOnce();
   });
@@ -309,10 +332,48 @@ describe("createDeepSpacePostprocessing", () => {
     addonRecords.failShaderCreation = false;
     const [bloomComposer, finalComposer] = addonRecords.composers;
     const bloom = addonRecords.blooms[0];
+    const compositeMaterial = addonRecords.compositeMaterials[0];
 
     pipeline.render();
 
     expect(pipeline.active).toBe(false);
+    expect(bloom.dispose).toHaveBeenCalledOnce();
+    expect(bloomComposer.dispose).toHaveBeenCalledOnce();
+    expect(finalComposer.dispose).toHaveBeenCalledOnce();
+    expect(compositeMaterial.dispose).toHaveBeenCalledOnce();
+    expect(renderer.render).toHaveBeenCalledWith(scene, camera);
+  });
+
+  it("releases transferred composite ownership when output setup fails", () => {
+    const renderer = { render: vi.fn() };
+    const scene = {};
+    const camera = { layers: new Layers() };
+    addonRecords.failOutputCreation = true;
+
+    const pipeline = createDeepSpacePostprocessing({
+      renderer,
+      scene,
+      camera,
+      quality: {
+        bloomEnabled: true,
+        bloomStrength: 1.18,
+        bloomRadius: 0.72,
+        bloomThreshold: 0.48,
+        bloomScale: 0.75
+      },
+      reducedMotion: false
+    });
+    addonRecords.failOutputCreation = false;
+    const [bloomComposer, finalComposer] = addonRecords.composers;
+    const bloom = addonRecords.blooms[0];
+    const compositePass = addonRecords.shaderPasses[0];
+    const compositeMaterial = addonRecords.compositeMaterials[0];
+
+    pipeline.render();
+
+    expect(pipeline.active).toBe(false);
+    expect(compositePass.dispose).toHaveBeenCalledOnce();
+    expect(compositeMaterial.dispose).toHaveBeenCalledOnce();
     expect(bloom.dispose).toHaveBeenCalledOnce();
     expect(bloomComposer.dispose).toHaveBeenCalledOnce();
     expect(finalComposer.dispose).toHaveBeenCalledOnce();
