@@ -13,8 +13,8 @@ const ROOT_DEPTH = -80;
 const DISC_DIAMETER = 210;
 const DISC_RADIUS = DISC_DIAMETER / 2;
 const INNER_ARM_RADIUS = 7.2;
-const INCLINATION = Math.PI / 9;
-const ROOT_SCALE = 1.62;
+const ROOT_TILT = -Math.PI * 2 / 15;
+const ROOT_SCALE = 1.6;
 const PROTECTED_CORE_RADIUS = 28;
 const MIN_GALAXY_POINTS = 1;
 
@@ -250,7 +250,7 @@ export const createMilkyWayLayer = (input) => {
   const root = new THREE.Group();
   root.name = "milky-way-layer";
   root.position.set(0, 0, ROOT_DEPTH);
-  root.rotation.set(-Math.PI / 2 + INCLINATION, 0, -0.16);
+  root.rotation.set(ROOT_TILT, 0, -0.16);
   root.scale.setScalar(ROOT_SCALE);
   root.visible = false;
   root.userData.composition = Object.freeze({

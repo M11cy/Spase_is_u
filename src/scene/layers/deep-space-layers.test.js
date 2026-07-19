@@ -17,9 +17,42 @@ const createLayer = (overrides = {}) => createMilkyWayLayer({
   ...overrides
 });
 
+const createSettledMilkyWayCamera = (aspect = 16 / 9) => {
+  const stage = STAGES.find(({ id }) => id === "milky-way");
+  const camera = new THREE.PerspectiveCamera(stage.camera.fov, aspect, 0.1, 2000);
+  camera.position.fromArray(stage.camera.position);
+  camera.lookAt(new THREE.Vector3(...stage.camera.target));
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  return camera;
+};
+
+const measureFaceOnInclination = (root, camera) => {
+  root.updateMatrixWorld(true);
+  const discNormal = new THREE.Vector3(0, 0, 1).transformDirection(root.matrixWorld);
+  const rootPosition = root.getWorldPosition(new THREE.Vector3());
+  const viewDirection = camera.position.clone().sub(rootPosition).normalize();
+  const alignment = Math.min(1, Math.abs(discNormal.dot(viewDirection)));
+  return THREE.MathUtils.radToDeg(Math.acos(alignment));
+};
+
+const measureProjectedRingWidth = ({ root, camera, radius, samples = 720 }) => {
+  root.updateMatrixWorld(true);
+  const projectedX = Array.from({ length: samples }, (_, index) => {
+    const angle = index / samples * Math.PI * 2;
+    const point = new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+    root.localToWorld(point);
+    point.project(camera);
+    return point.x;
+  });
+  return (Math.max(...projectedX) - Math.min(...projectedX)) / 2;
+};
+
 describe("createMilkyWayLayer", () => {
-  it("presents a large four-arm disc toward the camera", () => {
+  it("presents a large four-arm disc at an actual twenty-degree face-on inclination", () => {
     const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
+    const camera = createSettledMilkyWayCamera();
+    const actualInclination = measureFaceOnInclination(layer.root, camera);
 
     expect(layer.root.userData.composition).toEqual(expect.objectContaining({
       inclinationDegrees: 20,
@@ -28,7 +61,8 @@ describe("createMilkyWayLayer", () => {
       dustLanes: 2
     }));
     expect(Object.isFrozen(layer.root.userData.composition)).toBe(true);
-    expect(layer.root.rotation.x).toBeCloseTo(-Math.PI / 2 + Math.PI / 9, 4);
+    expect(actualInclination).toBeGreaterThanOrEqual(18);
+    expect(actualInclination).toBeLessThanOrEqual(22);
     expect(layer.root.rotation.z).toBeCloseTo(-0.16, 4);
     expect(layer.root.scale.x).toBeGreaterThanOrEqual(1.5);
 
@@ -50,19 +84,46 @@ describe("createMilkyWayLayer", () => {
     layer.dispose();
   });
 
-  it("fills roughly seventy percent of the settled desktop frame", () => {
+  it("projects the luminous arm envelope to roughly seventy percent of the settled desktop frame", () => {
     const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
-    const stage = STAGES.find(({ id }) => id === "milky-way");
-    const distance = Math.hypot(...stage.camera.position.map((value, index) => (
-      value - stage.camera.target[index]
-    )));
-    const verticalFov = stage.camera.fov * Math.PI / 180;
-    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * (16 / 9));
-    const viewportWidth = 2 * distance * Math.tan(horizontalFov / 2);
-    const occupancy = layer.root.userData.composition.diameter * layer.root.scale.x / viewportWidth;
+    const desktopCamera = createSettledMilkyWayCamera();
+    const mobileCamera = createSettledMilkyWayCamera(390 / 844);
+    const discRadius = layer.root.userData.composition.diameter / 2;
+    const luminousArmEnvelope = discRadius + 6;
+    const sparseHaloEnvelope = 118;
+    const mobileInnerStructure = 32;
+    const armOccupancy = measureProjectedRingWidth({
+      root: layer.root,
+      camera: desktopCamera,
+      radius: luminousArmEnvelope
+    });
+    const haloOccupancy = measureProjectedRingWidth({
+      root: layer.root,
+      camera: desktopCamera,
+      radius: sparseHaloEnvelope
+    });
+    const mobileInnerOccupancy = measureProjectedRingWidth({
+      root: layer.root,
+      camera: mobileCamera,
+      radius: mobileInnerStructure
+    });
+    const routeCameraZ = STAGES.map(({ camera }) => camera.position[2]);
+    const deepSpaceStart = STAGES.findIndex(({ id }) => id === "solar-system");
+    const deepSpaceCameraDistances = STAGES.slice(deepSpaceStart).map(({ camera }) => (
+      Math.hypot(...camera.position.map((value, index) => value - camera.target[index]))
+    ));
 
-    expect(occupancy).toBeGreaterThanOrEqual(0.66);
-    expect(occupancy).toBeLessThanOrEqual(0.75);
+    expect(armOccupancy).toBeGreaterThanOrEqual(0.65);
+    expect(armOccupancy).toBeLessThanOrEqual(0.75);
+    expect(haloOccupancy).toBeLessThanOrEqual(0.82);
+    expect(mobileInnerOccupancy).toBeGreaterThanOrEqual(0.65);
+    expect(mobileInnerOccupancy).toBeLessThanOrEqual(0.95);
+    expect(routeCameraZ.every((depth, index) => index === 0 || depth > routeCameraZ[index - 1]))
+      .toBe(true);
+    expect(deepSpaceCameraDistances.every((distance, index) => (
+      index === 0 || distance > deepSpaceCameraDistances[index - 1]
+    )))
+      .toBe(true);
 
     layer.dispose();
   });
