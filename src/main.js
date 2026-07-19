@@ -24,6 +24,7 @@ import {
   resolveCameraPose
 } from "./scene/create-scene.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
+import { createMilkyWayLayer } from "./scene/layers/milky-way.js";
 import { selectEarthTextureRoutes } from "./scene/earth-assets.js";
 import { createSolarSystemLayer } from "./scene/layers/solar-system.js";
 import { createTextureStore } from "./scene/textures.js";
@@ -628,8 +629,6 @@ const solarTextures = new Map(solarTextureSources.map((url, index) => (
 )));
 const glowDiscTexture = createGlowDiscTexture();
 solarTextures.set("glow", glowDiscTexture);
-const milkyWayTexture = textureLoader.load(publicAsset("space/milky-way-realistic.jpg"));
-milkyWayTexture.colorSpace = THREE.SRGBColorSpace;
 stars.material.map = glowDiscTexture;
 stars.material.alphaTest = 0.01;
 stars.material.depthWrite = false;
@@ -1046,56 +1045,7 @@ const solarSunPosition = solarSystemLayer.root.getObjectByName("sun")
   .getWorldPosition(new THREE.Vector3());
 sunLight.position.copy(solarSunPosition);
 
-const galaxyGeometry = new THREE.BufferGeometry();
-const galaxyPositions = [];
-for (let i = 0; i < 1600; i += 1) {
-  const angle = i * 0.23;
-  const radius = 12 + Math.sqrt(i) * 4.5;
-  const arm = i % 4;
-  const spread = (Math.random() - 0.5) * 16;
-  galaxyPositions.push(
-    Math.cos(angle + arm * 1.57) * radius + spread,
-    (Math.random() - 0.5) * 8,
-    Math.sin(angle + arm * 1.57) * radius + spread * 0.25 - 80
-  );
-}
-galaxyGeometry.setAttribute("position", new THREE.Float32BufferAttribute(galaxyPositions, 3));
-const galaxy = new THREE.Points(
-  galaxyGeometry,
-  new THREE.PointsMaterial({
-    map: glowDiscTexture,
-    color: 0xdbe7ff,
-    size: 1.15,
-    transparent: true,
-    opacity: 0,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending
-  })
-);
-galaxy.rotation.x = 0.34;
-galaxy.renderOrder = 5;
-group.add(galaxy);
-
-const milkyWayGlow = new THREE.Sprite(
-  new THREE.SpriteMaterial({
-    map: milkyWayTexture,
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.NormalBlending
-  })
-);
-milkyWayGlow.position.set(-20, 2, -82);
-milkyWayGlow.scale.set(900, 580, 1);
-milkyWayGlow.renderOrder = 4;
-group.add(milkyWayGlow);
-
-const galaxyAnnotationMarkers = new THREE.Group();
-const galaxyAnnotations = Object.freeze(galaxyAnnotationSources.map((source) => {
+const createGalaxyMarker = () => {
   const material = new THREE.SpriteMaterial({
     map: glowDiscTexture,
     color: 0xdfe9ff,
@@ -1106,18 +1056,20 @@ const galaxyAnnotations = Object.freeze(galaxyAnnotationSources.map((source) => 
     blending: THREE.AdditiveBlending
   });
   const marker = new THREE.Sprite(material);
-  marker.position.set(...source.position);
   marker.scale.set(12, 12, 1);
-  marker.userData.baseOpacity = 0.76;
-  const annotation = Object.freeze({ ...source, object3D: marker });
-  marker.userData.annotation = annotation;
-  marker.userData.stage = annotation.stage;
-  marker.renderOrder = 7;
-  galaxyAnnotationMarkers.add(marker);
-  interactive.push(marker);
-  return annotation;
-}));
-group.add(galaxyAnnotationMarkers);
+  material.opacity = 0.76;
+  return marker;
+};
+const milkyWayLayer = createMilkyWayLayer({
+  THREE,
+  annotations: galaxyAnnotationSources,
+  quality,
+  glowTexture: glowDiscTexture,
+  createMarker: createGalaxyMarker,
+  reducedMotion
+});
+const galaxyAnnotations = Object.freeze(milkyWayLayer.interactive.map((marker) => marker.userData.annotation));
+group.add(milkyWayLayer.root);
 
 const localGroup = new THREE.Group();
 for (let i = 0; i < 260; i += 1) {
@@ -1289,7 +1241,8 @@ const sceneManager = createScene({
   cameraTarget,
   layers: Object.freeze([
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
-    Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer })
+    Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer }),
+    Object.freeze({ stage: STAGE_INDEX["milky-way"], layer: milkyWayLayer })
   ]),
   interactive: Object.freeze([...interactive])
 });
@@ -1597,16 +1550,7 @@ function updateStage() {
   updateLabels(layerOpacities);
 
   const galaxyOpacity = layerOpacities[STAGE_INDEX["milky-way"]];
-  galaxy.visible = galaxyOpacity > 0.03;
-  galaxy.material.opacity = galaxyOpacity * 0.72;
-  milkyWayGlow.visible = galaxyOpacity > 0.03;
-  milkyWayGlow.material.opacity = galaxyOpacity;
-  const galaxyAnnotationOpacity = galaxyOpacity;
-  galaxyAnnotationMarkers.visible = galaxyOpacity > 0.03;
-  galaxyAnnotationMarkers.children.forEach((marker) => {
-    marker.visible = galaxyAnnotationMarkers.visible;
-    marker.material.opacity = marker.userData.baseOpacity * galaxyAnnotationOpacity;
-  });
+  milkyWayLayer.setPresence(galaxyOpacity);
   const localGroupOpacity = layerOpacities[STAGE_INDEX["local-group"]];
   localGroup.visible = localGroupOpacity > 0.03;
   localGroup.children.forEach((dot) => {
@@ -1648,6 +1592,10 @@ function startJourney() {
 
 function onPointerMove(event) {
   if (!journeyStarted) return;
+  milkyWayLayer.updateParallax({
+    x: (event.clientX / window.innerWidth) * 2 - 1,
+    y: (event.clientY / window.innerHeight) * -2 + 1
+  });
   const annotation = sceneManager.hitTest({ clientX: event.clientX, clientY: event.clientY });
   hovered = annotation?.stage != null && currentStageState.layerPresence[annotation.stage] > 0.08
     ? annotation
@@ -1757,9 +1705,6 @@ const localVisualRoots = Object.freeze([
   midSpaceStars,
   nearSpaceStars,
   hyperdriveLines,
-  galaxy,
-  milkyWayGlow,
-  galaxyAnnotationMarkers,
   localGroup,
   cosmicWebPoints,
   cosmicWebPlane,
@@ -1780,7 +1725,6 @@ function disposeLocalVisualResources() {
   });
   geometries.forEach((geometry) => geometry?.dispose());
   materials.forEach((material) => material?.dispose());
-  milkyWayTexture.dispose();
   cosmicWebTexture.dispose();
 }
 
