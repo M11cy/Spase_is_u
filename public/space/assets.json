@@ -1,0 +1,67 @@
+{
+  "/space/earth-daymap-8k.jpg": {
+    "avif": "/space/earth-daymap-8k.avif",
+    "webp": "/space/earth-daymap-8k.webp",
+    "fallback": "/space/earth-daymap-8k.jpg"
+  },
+  "/space/earth-daymap-4k.jpg": {
+    "avif": "/space/earth-daymap-4k.avif",
+    "webp": "/space/earth-daymap-4k.webp",
+    "fallback": "/space/earth-daymap-4k.jpg"
+  },
+  "/space/earth-clouds-4k.jpg": {
+    "avif": "/space/earth-clouds-4k.avif",
+    "webp": "/space/earth-clouds-4k.webp",
+    "fallback": "/space/earth-clouds-4k.jpg"
+  },
+  "/space/earth-daymap.jpg": {
+    "avif": "/space/earth-daymap.avif",
+    "webp": "/space/earth-daymap.webp",
+    "fallback": "/space/earth-daymap.jpg"
+  },
+  "/space/earth-clouds.jpg": {
+    "avif": "/space/earth-clouds.avif",
+    "webp": "/space/earth-clouds.webp",
+    "fallback": "/space/earth-clouds.jpg"
+  },
+  "/space/mars.jpg": {
+    "avif": "/space/mars.avif",
+    "webp": "/space/mars.webp",
+    "fallback": "/space/mars.jpg"
+  },
+  "/space/jupiter.jpg": {
+    "avif": "/space/jupiter.avif",
+    "webp": "/space/jupiter.webp",
+    "fallback": "/space/jupiter.jpg"
+  },
+  "/space/neptune.jpg": {
+    "avif": "/space/neptune.avif",
+    "webp": "/space/neptune.webp",
+    "fallback": "/space/neptune.jpg"
+  },
+  "/space/voyager-heliosphere.jpg": {
+    "avif": "/space/voyager-heliosphere.avif",
+    "webp": "/space/voyager-heliosphere.webp",
+    "fallback": "/space/voyager-heliosphere.jpg"
+  },
+  "/space/sagittarius-a.jpg": {
+    "avif": "/space/sagittarius-a.avif",
+    "webp": "/space/sagittarius-a.webp",
+    "fallback": "/space/sagittarius-a.jpg"
+  },
+  "/space/milky-way-realistic.jpg": {
+    "avif": "/space/milky-way-realistic.avif",
+    "webp": "/space/milky-way-realistic.webp",
+    "fallback": "/space/milky-way-realistic.jpg"
+  },
+  "/space/andromeda.jpg": {
+    "avif": "/space/andromeda.avif",
+    "webp": "/space/andromeda.webp",
+    "fallback": "/space/andromeda.jpg"
+  },
+  "/space/local-group.jpg": {
+    "avif": "/space/local-group.avif",
+    "webp": "/space/local-group.webp",
+    "fallback": "/space/local-group.jpg"
+  }
+}

@@ -1,0 +1,1795 @@
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../public/fonts/press-start-2p.ttf") format("truetype");
+}
+
+:root {
+  color-scheme: dark;
+  --bg: oklch(0.13 0.035 263);
+  --ink: oklch(0.98 0.006 255);
+  --muted: oklch(0.78 0.034 250);
+  --line: oklch(0.98 0.01 255 / 0.2);
+  --accent: oklch(0.78 0.12 225);
+  --panel: oklch(0.16 0.045 260 / 0.82);
+  font-family:
+    "Press Start 2P", ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: #000;
+  overflow-x: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+.experience {
+  position: relative;
+  min-height: 2100vh;
+}
+
+#cosmosCanvas,
+.map-layer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#cosmosCanvas {
+  z-index: 2;
+}
+
+.map-layer {
+  --map-opacity: 0;
+  --map-mask-radius: 160vmax;
+  --map-scale: 1.03;
+  --map-tilt: 0deg;
+  z-index: 3;
+  background: transparent;
+  overflow: hidden;
+  opacity: var(--map-opacity);
+  clip-path: circle(var(--map-mask-radius) at 50% 50%);
+  transform: scale(var(--map-scale)) perspective(1200px) rotateX(var(--map-tilt));
+  transform-origin: center;
+  transition: opacity 500ms ease, clip-path 700ms ease, transform 700ms ease;
+  pointer-events: none;
+  will-change: opacity, clip-path, transform;
+}
+
+.map-layer > #mapRoot {
+  --map-image-scale: 1;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160vw;
+  height: 160vh;
+  overflow: hidden;
+  filter: saturate(1.04) contrast(1.03) brightness(1);
+  transform: translate(-50%, -50%) scale(var(--map-image-scale));
+  transform-origin: center;
+  transition: transform 180ms linear;
+  will-change: transform;
+}
+
+.satellite-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #07111c;
+  filter: saturate(1.04) contrast(1.03) brightness(1);
+}
+
+.satellite-map.leaflet-container {
+  cursor: default;
+  font-family: inherit;
+}
+
+.satellite-map .leaflet-pane {
+  transform-origin: center;
+}
+
+.satellite-map .leaflet-tile {
+  image-rendering: auto;
+}
+
+.satellite-map .leaflet-control-attribution {
+  margin: 0 8px 8px 0;
+  padding: 2px 5px;
+  color: rgb(255 255 255 / 0.62);
+  background: rgb(0 0 0 / 0.48);
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.satellite-map .leaflet-control-attribution a {
+  color: rgb(255 255 255 / 0.82);
+}
+
+.map-status {
+  position: absolute;
+  z-index: 900;
+  left: 50%;
+  bottom: max(82px, 10vh);
+  width: min(560px, calc(100% - 48px));
+  margin: 0;
+  transform: translateX(-50%);
+  color: white;
+  text-align: center;
+  text-shadow: 0 2px 18px #000, 0 0 28px #000;
+}
+
+.satellite-map[data-map-state="unavailable"] {
+  background: transparent;
+  filter: none;
+}
+
+.satellite-map[data-map-state="unavailable"] .leaflet-pane,
+.satellite-map[data-map-state="unavailable"] .leaflet-control-container {
+  opacity: 0;
+}
+
+.map-reticle {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgb(255 255 255 / 0.62);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.map-vignette {
+  position: absolute;
+  inset: 0;
+  background: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.topbar {
+  position: fixed;
+  z-index: 7;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.reference-caption {
+  position: fixed;
+  z-index: 8;
+  top: clamp(92px, 16vh, 180px);
+  left: 50%;
+  width: min(760px, calc(100% - 48px));
+  transform: translateX(-50%);
+  color: white;
+  font-size: clamp(18px, 3.2vw, 38px);
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 0.9), 0 0 30px rgb(0 0 0 / 0.75);
+  pointer-events: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+/* Soft dark halo behind the caption so it never blends into a bright Earth. */
+.reference-caption::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -22px -6%;
+  background: radial-gradient(ellipse 62% 100% at center, rgb(3 7 17 / 0.74), rgb(3 7 17 / 0) 74%);
+  pointer-events: none;
+}
+
+body:not([data-stage="0"]) .reference-caption {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-14px);
+}
+
+.space-labels {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.space-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: min(220px, 42vw);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  color: rgb(255 255 255 / 0.88);
+  background: transparent;
+  font-size: clamp(9px, 1vw, 12px);
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  text-shadow:
+    0 2px 12px rgb(0 0 0 / 0.96),
+    0 0 22px rgb(255 255 255 / 0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, font-size 140ms ease, color 140ms ease, text-shadow 140ms ease, filter 140ms ease;
+  will-change: transform, opacity;
+}
+
+.space-label.visible {
+  pointer-events: auto;
+}
+
+/* Quest planets: not-yet-solved names glow brighter than the ones already done,
+   so it's obvious where to go next. JS toggles .collected when a part is found. */
+.space-label.quest-target {
+  color: #eaf4ff;
+  font-weight: 700;
+  text-shadow:
+    0 2px 12px rgb(0 0 0 / 0.96),
+    0 0 16px rgb(150 216 255 / 0.75);
+}
+
+.space-label.quest-target.collected {
+  color: rgb(220 232 255 / 0.5);
+  font-weight: 400;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 0.9);
+  filter: brightness(0.72);
+}
+
+.space-label:hover {
+  color: white;
+  font-size: clamp(11px, 1.25vw, 14px);
+}
+
+.space-label:focus-visible {
+  color: white;
+  outline: 2px solid #6fc7ff;
+  outline-offset: 2px;
+}
+
+.unknown-layer {
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  text-shadow: 0 3px 28px rgb(0 0 0 / 0.95);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.unknown-layer div {
+  width: min(760px, calc(100% - 48px));
+}
+
+.unknown-layer strong {
+  display: block;
+  color: white;
+  font-size: clamp(58px, 11vw, 132px);
+  font-weight: 400;
+  line-height: 0.8;
+  text-shadow:
+    0 0 24px rgb(125 211 252 / 0.45),
+    0 0 90px rgb(125 211 252 / 0.26),
+    0 30px 120px rgb(0 0 0 / 0.9);
+}
+
+.unknown-layer h2 {
+  margin: 24px 0 0;
+  color: white;
+  font-size: clamp(18px, 3vw, 34px);
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.unknown-layer p {
+  width: min(680px, 100%);
+  margin: 16px auto 0;
+  color: rgb(255 255 255 / 0.76);
+  font-size: clamp(10px, 1.15vw, 13px);
+  line-height: 1.8;
+  text-wrap: pretty;
+}
+
+.topbar > div,
+.topbar button,
+.scale-rail,
+.object-panel {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0;
+  color: white;
+  font-size: 10px;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.8);
+}
+
+.signal {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 20px var(--accent);
+}
+
+.topbar button {
+  min-height: 42px;
+  padding: 0;
+  color: var(--ink);
+  cursor: pointer;
+  pointer-events: auto;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.8);
+}
+
+.topbar button:hover,
+.scale-rail button:hover {
+  color: white;
+  background: transparent;
+}
+
+.narration-panel {
+  position: fixed;
+  z-index: 9;
+  top: auto;
+  bottom: 82px;
+  left: 24px;
+  width: min(430px, calc(100% - 48px));
+  padding: 14px 16px 13px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  color: white;
+  background: rgb(3 7 17 / 0.7);
+  box-shadow: 0 18px 70px rgb(0 0 0 / 0.34);
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.82);
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+}
+
+.narration-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#narrationStage {
+  color: rgb(255 255 255 / 0.68);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.narration-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-toggle,
+.subtitle-toggle,
+.subtitle-restore {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 999px;
+  color: white;
+  background: rgb(255 255 255 / 0.08);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.voice-toggle:hover,
+.subtitle-toggle:hover,
+.subtitle-restore:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+
+.subtitle-toggle {
+  font-size: 18px;
+}
+
+.subtitle-restore {
+  position: fixed;
+  z-index: 9;
+  left: 24px;
+  bottom: 82px;
+  width: auto;
+  min-width: 42px;
+  padding: 0 10px;
+  color: white;
+  background: rgb(3 7 17 / 0.76);
+  box-shadow: 0 18px 70px rgb(0 0 0 / 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.subtitle-restore[hidden] {
+  display: none;
+}
+
+body.subtitles-hidden .narration-panel {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  visibility: hidden;
+}
+
+.narration-panel p {
+  margin: 10px 0 0;
+  color: rgb(255 255 255 / 0.86);
+  font-size: 10px;
+  line-height: 1.8;
+  text-wrap: pretty;
+}
+
+.narration-progress {
+  height: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.14);
+}
+
+.narration-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #82d7ff, #ffd77a);
+  transition: width 120ms linear;
+}
+
+.mission-status {
+  position: fixed;
+  z-index: 9;
+  top: 82px;
+  right: 24px;
+  width: min(320px, calc(100% - 48px));
+  color: rgb(255 255 255 / 0.78);
+  font-size: 9px;
+  line-height: 1.75;
+  text-align: right;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.9);
+  pointer-events: none;
+}
+
+.rocket-catcher,
+.web-runner,
+.star-maker {
+  position: fixed;
+  z-index: 9;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.rocket-catcher {
+  top: 50%;
+  left: 50%;
+  width: var(--zone-size, 190px);
+  height: var(--zone-size, 190px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: opacity 700ms ease, width 260ms ease, height 260ms ease;
+}
+
+body[data-stage="1"].earth-ship-ready:not(.rocket-caught) .rocket-catcher {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The stationary catch zone the player taps. JS toggles .armed while the rocket
+   is inside it and .miss on a mistimed tap; --zone-size tracks the catch radius. */
+.rocket-catcher::before {
+  position: absolute;
+  content: "";
+  inset: 0;
+  border-radius: 50%;
+  border: 2px dashed rgb(150 216 255 / 0.5);
+  background: radial-gradient(circle, rgb(120 200 255 / 0.1), rgb(120 200 255 / 0) 68%);
+  box-shadow:
+    0 0 22px rgb(120 200 255 / 0.3),
+    inset 0 0 18px rgb(120 200 255 / 0.22);
+  animation: rocketZoneSpin 12s linear infinite;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.rocket-catcher:hover::before {
+  border-color: rgb(180 224 255 / 0.75);
+}
+
+.rocket-catcher.armed::before {
+  border-style: solid;
+  border-color: rgb(168 245 195 / 0.95);
+  box-shadow:
+    0 0 34px rgb(150 245 190 / 0.75),
+    inset 0 0 26px rgb(150 245 190 / 0.5);
+}
+
+.rocket-catcher::after {
+  position: absolute;
+  content: "";
+  inset: -6px;
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.rocket-catcher.miss::after {
+  animation: rocketZoneMiss 460ms ease;
+}
+
+.rocket-body {
+  position: absolute;
+  top: 22px;
+  left: 14px;
+  width: 30px;
+  height: 14px;
+  border-radius: 999px 5px 5px 999px;
+  background: linear-gradient(90deg, #d6f1ff, #ffffff 50%, #8fd8ff);
+  box-shadow:
+    0 0 24px rgb(130 215 255 / 0.58),
+    -12px 0 22px rgb(255 158 86 / 0.62);
+  transform: rotate(-16deg);
+}
+
+.rocket-body::before,
+.rocket-body::after {
+  position: absolute;
+  content: "";
+}
+
+.rocket-body::before {
+  right: -8px;
+  top: 2px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 10px solid #ffffff;
+}
+
+.rocket-body::after {
+  left: -13px;
+  top: 4px;
+  width: 13px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #ffb45f, #fff1a8);
+}
+
+/* The rocket that flies the figure-eight. Purely visual — its position and
+   heading are written inline every frame, so nothing here is eased. */
+.rocket-ship {
+  position: fixed;
+  z-index: 9;
+  top: 50%;
+  left: 50%;
+  width: 58px;
+  height: 58px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 700ms ease;
+}
+
+body[data-stage="1"].earth-ship-ready:not(.rocket-caught) .rocket-ship {
+  opacity: 1;
+}
+
+.rocket-catcher.armed ~ .rocket-ship .rocket-body {
+  box-shadow:
+    0 0 34px rgb(150 245 190 / 0.9),
+    -18px 0 30px rgb(255 190 120 / 0.85);
+  filter: brightness(1.16);
+}
+
+@keyframes rocketZoneSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rocketZoneMiss {
+  0% {
+    opacity: 0;
+    box-shadow: 0 0 0 rgb(255 90 90 / 0);
+  }
+  30% {
+    opacity: 1;
+    box-shadow:
+      0 0 36px rgb(255 90 90 / 0.85),
+      inset 0 0 24px rgb(255 90 90 / 0.5);
+  }
+  100% {
+    opacity: 0;
+    box-shadow: 0 0 0 rgb(255 90 90 / 0);
+  }
+}
+
+.web-runner,
+.star-maker {
+  left: 50%;
+  bottom: 82px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 8px;
+  color: white;
+  background: rgb(3 7 17 / 0.58);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.32);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  font-size: 10px;
+  transform: translateX(-50%) translateY(8px);
+}
+
+body[data-stage="6"]:not(.web-complete) .web-runner,
+body[data-stage="7"] .star-maker {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+body.web-complete .web-runner,
+body.final-star-lit .star-maker {
+  color: rgb(255 255 255 / 0.62);
+  border-color: rgb(255 255 255 / 0.14);
+}
+
+.web-runner:hover,
+.star-maker:hover {
+  border-color: rgb(255 255 255 / 0.46);
+  background: rgb(255 255 255 / 0.1);
+}
+
+/* Cosmic-web flow puzzle (stage 6): rotate filament tiles to connect our galaxy
+   (source, left) to the far node (sink, right). JS builds the grid of tiles. */
+.web-flow {
+  position: fixed;
+  z-index: 8;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+body[data-stage="6"]:not(.web-complete) .web-flow {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.web-flow__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--flow-cols, 3), 1fr);
+  gap: 6px;
+  width: min(88vw, 480px);
+  padding: 12px;
+  border: 1px solid rgb(150 216 255 / 0.28);
+  border-radius: 14px;
+  background: rgb(6 11 26 / 0.82);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.55);
+  transition: border-color 260ms ease, box-shadow 260ms ease;
+}
+
+.web-flow__tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 8px;
+  background: rgb(10 18 38 / 0.6);
+  cursor: pointer;
+}
+
+.web-flow__tile--empty {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.web-flow__pipe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: transform 160ms ease;
+}
+
+.web-flow__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.web-flow__svg path {
+  fill: none;
+  stroke: rgb(150 216 255 / 0.55);
+  stroke-width: 13;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 180ms ease;
+}
+
+.web-flow__pipe.lit .web-flow__svg path {
+  stroke: rgb(160 245 200 / 0.98);
+  filter: drop-shadow(0 0 5px rgb(150 245 190 / 0.85));
+}
+
+.web-flow__tile.source::before,
+.web-flow__tile.sink::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(150 216 255 / 0.95);
+  box-shadow: 0 0 12px rgb(150 216 255 / 0.9);
+  transform: translateY(-50%);
+}
+
+.web-flow__tile.source::before {
+  left: -9px;
+}
+
+.web-flow__tile.sink::after {
+  right: -9px;
+  background: rgb(160 245 200 / 0.95);
+  box-shadow: 0 0 12px rgb(150 245 190 / 0.9);
+}
+
+.web-flow.solved .web-flow__grid {
+  border-color: rgb(150 245 190 / 0.85);
+  box-shadow: 0 0 42px rgb(150 245 190 / 0.5), 0 24px 80px rgb(0 0 0 / 0.55);
+}
+
+.personal-stars {
+  position: fixed;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+}
+
+body:not([data-stage="7"]) .personal-stars {
+  display: none;
+}
+
+.personal-stars span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #ffffff;
+  box-shadow:
+    0 0 6px rgb(255 255 255 / 0.85),
+    0 0 16px rgb(130 215 255 / 0.55);
+  image-rendering: pixelated;
+  animation: starGlow 2.6s ease-in-out var(--twinkle-delay, 0s) infinite;
+}
+
+/* One-time flash when the star is lit; it then stays and gently glows. */
+.personal-stars span::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.95);
+  box-shadow: 0 0 26px 10px rgb(190 225 255 / 0.85);
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: starFlash 900ms ease-out forwards;
+}
+
+.intro {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+  animation: introFloat 1600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.intro h1 {
+  margin: 0;
+  max-width: 980px;
+  font-size: clamp(28px, 5.2vw, 68px);
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-wrap: balance;
+  text-shadow: 0 14px 60px rgb(0 0 0 / 0.72);
+}
+
+.intro p {
+  position: absolute;
+  bottom: 9vh;
+  left: 50%;
+  width: min(620px, calc(100% - 48px));
+  margin: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+body:not([data-stage="0"]) .intro {
+  opacity: 0 !important;
+  transform: translateY(-32px) scale(0.96) !important;
+  animation: none;
+  transition: opacity 500ms ease, transform 500ms ease;
+}
+
+.scale-rail {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  width: min(860px, calc(100% - 48px));
+  padding: 0;
+  transform: translateX(-50%);
+}
+
+.scale-rail button {
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  color: rgb(255 255 255 / 0.52);
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  text-shadow: 0 2px 16px rgb(0 0 0 / 0.92);
+}
+
+.scale-rail button.active {
+  color: white;
+  background: transparent;
+}
+
+.distance-scale {
+  position: fixed;
+  z-index: 6;
+  top: 50%;
+  right: 24px;
+  width: 138px;
+  transform: translateY(-50%);
+  color: rgb(255 255 255 / 0.72);
+  pointer-events: none;
+  text-align: right;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.9);
+}
+
+.distance-scale p,
+.distance-scale strong {
+  display: block;
+  margin: 0;
+}
+
+.distance-scale p {
+  color: rgb(255 255 255 / 0.48);
+  font-size: 11px;
+}
+
+.distance-scale strong {
+  margin-top: 4px;
+  color: white;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.distance-scale ol {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  margin: 18px 0 0;
+  padding: 0 12px 0 0;
+  list-style: none;
+}
+
+.distance-scale ol::after {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  bottom: 4px;
+  width: 1px;
+  content: "";
+  background: linear-gradient(180deg, transparent, rgb(255 255 255 / 0.46), transparent);
+}
+
+.distance-scale li {
+  position: relative;
+  min-height: 10px;
+  color: rgb(255 255 255 / 0.34);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.distance-scale li span {
+  position: absolute;
+  top: 3px;
+  right: -13px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.distance-scale li em {
+  font-style: normal;
+}
+
+.distance-scale li.active {
+  color: var(--accent);
+}
+
+.object-panel {
+  position: fixed;
+  z-index: 10;
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: 84px;
+  width: min(760px, calc(100% - 48px));
+  display: grid;
+  grid-template-columns: minmax(160px, 250px) 1fr;
+  gap: 16px;
+  padding: 0;
+  transform: translateX(-50%) translateY(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 0.92);
+}
+
+.object-panel.open {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.object-panel.no-image {
+  grid-template-columns: 1fr;
+  width: min(620px, calc(100% - 48px));
+}
+
+/* Quiz cards sit centred on screen so they never collide with the bottom
+   "Собрать двигатель" button or the scale rail. */
+.object-panel.has-quiz {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, calc(-50% + 10px));
+}
+
+.object-panel.has-quiz.open {
+  transform: translate(-50%, -50%);
+}
+
+#closePanel {
+  position: absolute;
+  top: -38px;
+  right: 0;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 24px;
+  text-shadow: 0 2px 16px rgb(0 0 0 / 0.92);
+}
+
+#closePanel:hover {
+  background: transparent;
+  color: white;
+}
+
+.object-panel img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0;
+  background: #05070e;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.48);
+}
+
+.object-panel p,
+.object-panel h2 {
+  margin: 0;
+}
+
+#panelScale {
+  color: rgb(255 255 255 / 0.68);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.object-panel h2 {
+  margin-top: 6px;
+  font-size: 18px;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+#panelText {
+  margin-top: 10px;
+  color: rgb(255 255 255 / 0.84);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.object-panel dl {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.object-panel dl div {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 0.2);
+}
+
+.object-panel dt {
+  color: rgb(255 255 255 / 0.56);
+  font-size: 12px;
+}
+
+.object-panel dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.75;
+}
+
+/* Blurred backdrop so info cards read clearly over the busy scene behind them. */
+.panel-scrim {
+  position: fixed;
+  z-index: 5;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: rgb(3 7 17 / 0.5);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  transition: opacity 240ms ease;
+}
+
+body.panel-open .panel-scrim {
+  opacity: 1;
+}
+
+/* Planet quiz inside the object panel — the stage-2 engine-part hunt. */
+.panel-quiz {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.2);
+}
+
+.panel-quiz__question {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.panel-quiz__options {
+  display: grid;
+  gap: 8px;
+}
+
+.panel-quiz__option {
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgb(8 14 28 / 0.72);
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.panel-quiz__option:hover:not(:disabled) {
+  border-color: rgb(150 216 255 / 0.6);
+  background: rgb(20 32 56 / 0.85);
+  transform: scale(1.03);
+}
+
+.panel-quiz__option:disabled {
+  cursor: default;
+}
+
+.panel-quiz__option.correct {
+  border-color: rgb(150 245 190 / 0.9);
+  background: rgb(26 66 46 / 0.85);
+}
+
+.panel-quiz__option.wrong {
+  border-color: rgb(255 138 138 / 0.85);
+  background: rgb(66 26 30 / 0.7);
+  opacity: 0.68;
+}
+
+.panel-quiz__feedback {
+  min-height: 14px;
+  color: rgb(255 255 255 / 0.82);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.panel-quiz[data-state="solved"] .panel-quiz__feedback,
+.panel-quiz__done {
+  color: rgb(150 245 190 / 0.95);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Engine-assembly puzzle (stage 2, after all 8 parts are collected). */
+.engine-puzzle-open {
+  position: fixed;
+  z-index: 9;
+  left: 50%;
+  bottom: 82px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgb(150 245 190 / 0.5);
+  border-radius: 8px;
+  color: white;
+  background: rgb(3 7 17 / 0.6);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.32);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+body[data-stage="2"].parts-collected:not(.engine-assembled) .engine-puzzle-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.engine-puzzle {
+  position: fixed;
+  z-index: 15;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(3 7 17 / 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.engine-puzzle[hidden] {
+  display: none;
+}
+
+.engine-puzzle__dialog {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  width: min(92vw, 460px);
+  padding: 22px;
+  border: 1px solid rgb(150 216 255 / 0.3);
+  border-radius: 14px;
+  background: rgb(8 14 28 / 0.92);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.6);
+  text-align: center;
+}
+
+.engine-puzzle__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.engine-puzzle__hint {
+  margin: 0;
+  color: rgb(255 255 255 / 0.7);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.engine-puzzle__board {
+  display: grid;
+  grid-template-columns: repeat(var(--puzzle-size, 3), 1fr);
+  gap: 4px;
+  width: min(78vmin, 340px);
+  aspect-ratio: 1;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 0.4);
+}
+
+.engine-puzzle__tile {
+  padding: 0;
+  aspect-ratio: 1;
+  border: 1px solid rgb(150 216 255 / 0.25);
+  border-radius: 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  transition: outline-color 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+
+.engine-puzzle__tile.placed {
+  border-color: rgb(150 245 190 / 0.5);
+}
+
+.engine-puzzle__tile.selected {
+  outline: 3px solid rgb(150 245 190 / 0.95);
+  outline-offset: -3px;
+  transform: scale(0.95);
+}
+
+.engine-puzzle__status {
+  margin: 0;
+  min-height: 14px;
+  color: rgb(150 245 190 / 0.95);
+  font-size: 10px;
+}
+
+.engine-puzzle__close {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 8px;
+  color: white;
+  background: rgb(3 7 17 / 0.6);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+/* Finale coupon modal with a weighted prize wheel (roulette). */
+.coupon {
+  position: fixed;
+  z-index: 16;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(3 7 17 / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.coupon[hidden] {
+  display: none;
+}
+
+.coupon__dialog {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  width: min(92vw, 420px);
+  padding: 24px;
+  border: 1px solid rgb(150 216 255 / 0.3);
+  border-radius: 16px;
+  background: rgb(8 14 28 / 0.95);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.62);
+  text-align: center;
+}
+
+.coupon__eyebrow {
+  margin: 0;
+  color: rgb(255 205 120 / 0.95);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.coupon__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.coupon__text {
+  margin: 0;
+  color: rgb(255 255 255 / 0.72);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.coupon__wheel-wrap {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  margin: 6px 0;
+}
+
+.coupon__pointer {
+  position: absolute;
+  z-index: 2;
+  top: -6px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+  border-top: 20px solid #ffd36b;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.6));
+}
+
+.coupon__wheel {
+  position: absolute;
+  inset: 0;
+  width: 240px;
+  height: 240px;
+  padding: 0;
+  border: 4px solid rgb(255 255 255 / 0.16);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 20px rgb(0 0 0 / 0.45),
+    0 8px 22px rgb(0 0 0 / 0.4);
+  transition: transform 4.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.coupon__wheel.is-spinning {
+  cursor: default;
+}
+
+.coupon__label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+}
+
+.coupon__spin {
+  min-height: 36px;
+  padding: 0 18px;
+  border: 1px solid rgb(150 216 255 / 0.6);
+  border-radius: 8px;
+  color: white;
+  background: rgb(3 7 17 / 0.6);
+  cursor: pointer;
+  font-size: 10px;
+  animation: couponSpinPulse 1.8s ease-in-out infinite;
+}
+
+.coupon__spin:hover:not(:disabled) {
+  border-color: rgb(180 228 255 / 0.95);
+}
+
+.coupon__spin:disabled {
+  cursor: default;
+  opacity: 0.65;
+  animation: none;
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+@keyframes couponSpinPulse {
+  0%,
+  100% {
+    border-color: rgb(150 216 255 / 0.55);
+    box-shadow: 0 0 10px rgb(120 200 255 / 0.3);
+  }
+  50% {
+    border-color: rgb(180 228 255 / 0.95);
+    box-shadow: 0 0 20px rgb(120 200 255 / 0.6);
+  }
+}
+
+.coupon__result {
+  margin: 0;
+  min-height: 16px;
+  color: rgb(150 245 190 / 0.98);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.coupon__close {
+  min-height: 36px;
+  padding: 0 18px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  color: rgb(255 255 255 / 0.5);
+  background: rgb(3 7 17 / 0.28);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.coupon__close:hover {
+  color: rgb(255 255 255 / 0.85);
+  border-color: rgb(255 255 255 / 0.3);
+}
+
+.scroll-space {
+  position: relative;
+  z-index: -1;
+}
+
+.scroll-space section {
+  height: 300vh;
+}
+
+.is-pointing #cosmosCanvas {
+  cursor: pointer;
+}
+
+@keyframes introFloat {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.97);
+    filter: blur(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes starGlow {
+  0%,
+  100% {
+    opacity: 0.72;
+    box-shadow:
+      0 0 5px rgb(255 255 255 / 0.7),
+      0 0 12px rgb(130 215 255 / 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 9px rgb(255 255 255 / 0.98),
+      0 0 22px rgb(130 215 255 / 0.7);
+  }
+}
+
+@keyframes starFlash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(13);
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    top: 14px;
+    left: 14px;
+    right: 14px;
+  }
+
+  .narration-panel {
+    top: auto;
+    bottom: 188px;
+    left: 14px;
+    width: calc(100% - 28px);
+    padding: 12px 13px;
+  }
+
+  .subtitle-restore {
+    left: 14px;
+    bottom: 188px;
+  }
+
+  .narration-panel p {
+    font-size: 9px;
+  }
+
+  .mission-status {
+    top: 116px;
+    right: 14px;
+    bottom: auto;
+    width: calc(100% - 28px);
+    font-size: 8px;
+    text-align: center;
+  }
+
+  .web-runner,
+  .star-maker {
+    bottom: 136px;
+  }
+
+  .intro h1 {
+    font-size: 30px;
+  }
+
+  .intro p {
+    bottom: 13vh;
+    font-size: 9px;
+  }
+
+  .scale-rail {
+    left: 50%;
+    right: auto;
+    bottom: 14px;
+    width: calc(100% - 28px);
+    gap: 9px;
+  }
+
+  .scale-rail button {
+    flex: 1 1 28%;
+    min-height: 28px;
+    font-size: 8px;
+  }
+
+  .distance-scale {
+    right: 14px;
+    width: 104px;
+  }
+
+  .distance-scale ol {
+    gap: 9px;
+  }
+
+  .distance-scale li {
+    font-size: 7px;
+  }
+
+  .object-panel {
+    left: 50%;
+    bottom: 92px;
+    width: calc(100% - 28px);
+    grid-template-columns: 1fr;
+  }
+
+  .object-panel img {
+    max-height: 190px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+
+  .map-layer,
+  .satellite-map {
+    transition: none !important;
+  }
+
+}
+
+/* Task 5: cinematic entry shell. Keep the established map and quest layout above intact. */
+body.intro-pending {
+  overflow: hidden;
+}
+
+body.intro-pending .experience > :not(#introLayer):not(#cosmosCanvas) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.cinematic-intro {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  isolation: isolate;
+  display: grid;
+  align-items: center;
+  overflow: hidden;
+  min-height: 100svh;
+  padding: clamp(24px, 6vw, 96px);
+  color: #f4f7ff;
+  background: transparent;
+  transition: opacity 700ms ease, visibility 700ms ease;
+}
+
+.cinematic-intro::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 20% 24%, rgb(58 91 142 / 0.2), transparent 32rem),
+    radial-gradient(circle at 84% 76%, rgb(244 157 83 / 0.1), transparent 26rem),
+    linear-gradient(90deg, rgb(1 4 11 / 0.88) 0 34%, rgb(1 4 11 / 0.28) 65%, rgb(1 4 11 / 0.08));
+}
+
+.cinematic-intro::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: rgb(0 0 0 / 0.28);
+  pointer-events: none;
+}
+
+.cinematic-intro[data-state="leaving"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cinematic-intro__copy {
+  position: relative;
+  z-index: 1;
+  width: min(530px, 51vw);
+  text-wrap: balance;
+}
+
+.cinematic-intro__eyebrow {
+  margin: 0 0 18px;
+  color: rgb(191 214 250 / 0.72);
+  font-size: clamp(9px, 0.9vw, 12px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.cinematic-intro h1 {
+  margin: 0;
+  max-width: 11ch;
+  font-size: clamp(42px, 6.8vw, 100px);
+  font-weight: 400;
+  line-height: 1.06;
+  letter-spacing: -0.055em;
+  text-shadow: 0 14px 50px rgb(0 0 0 / 0.6);
+}
+
+.cinematic-intro__lede {
+  max-width: 44ch;
+  margin: 28px 0 0;
+  color: rgb(235 241 252 / 0.75);
+  font-size: clamp(11px, 1.15vw, 15px);
+  line-height: 1.85;
+}
+
+.start-journey-button {
+  min-height: 48px;
+  margin-top: 36px;
+  padding: 12px 22px;
+  border: 1px solid rgb(226 237 255 / 0.72);
+  border-radius: 999px;
+  color: #0a1020;
+  background: #eef5ff;
+  box-shadow: 0 12px 42px rgb(98 168 255 / 0.2);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.2;
+  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.start-journey-button:hover {
+  background: #fff;
+  box-shadow: 0 16px 52px rgb(98 168 255 / 0.34);
+  transform: translateY(-2px);
+}
+
+.start-journey-button:focus-visible {
+  outline: 3px solid #9fceff;
+  outline-offset: 4px;
+}
+
+.cinematic-ship {
+  --ship-roll: 0deg;
+  --ship-drift-x: 0px;
+  --ship-drift-y: 0px;
+  position: absolute;
+  z-index: 0;
+  right: clamp(-230px, -9vw, -86px);
+  bottom: clamp(-210px, -10vw, -92px);
+  width: min(76vw, 960px);
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+  filter: drop-shadow(0 30px 42px rgb(0 0 0 / 0.52));
+  transform: translate3d(var(--ship-drift-x), var(--ship-drift-y), 0) rotate(calc(-7deg + var(--ship-roll)));
+  transform-origin: 63% 54%;
+  will-change: transform;
+}
+
+@media (max-width: 760px) {
+  .cinematic-intro {
+    align-items: end;
+    padding: 28px 20px 54px;
+  }
+
+  .cinematic-intro__copy {
+    width: min(100%, 480px);
+  }
+
+  .cinematic-intro h1 {
+    max-width: 10ch;
+    font-size: clamp(44px, 14vw, 72px);
+  }
+
+  .cinematic-intro__lede {
+    max-width: 34ch;
+    margin-top: 20px;
+  }
+
+  .start-journey-button {
+    width: 100%;
+    margin-top: 26px;
+  }
+
+  .cinematic-ship {
+    top: -4vh;
+    right: -30vw;
+    bottom: auto;
+    width: 124vw;
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-intro,
+  .start-journey-button {
+    transition: none;
+  }
+
+}
