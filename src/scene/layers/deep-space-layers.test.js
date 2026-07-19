@@ -453,15 +453,39 @@ describe("createLocalGroupLayer", () => {
   it("uses several depth clusters while preserving broad empty regions", () => {
     const layer = createLocalGroup();
     const occupiedCells = new Set(layer.catalog.map(({ position: [x, y] }) => (
-      `${Math.floor((x + 140) / 35)}:${Math.floor((y + 90) / 30)}`
+      `${Math.floor((x + 380) / 90)}:${Math.floor((y + 140) / 45)}`
     )));
     const depthBands = new Set(layer.catalog.map(({ position: [, , z] }) => Math.floor((-z - 110) / 55)));
 
-    expect(occupiedCells.size).toBeGreaterThanOrEqual(8);
-    expect(occupiedCells.size).toBeLessThanOrEqual(24);
+    expect(occupiedCells.size).toBeGreaterThanOrEqual(14);
+    expect(occupiedCells.size).toBeLessThanOrEqual(28);
     expect(depthBands.size).toBeGreaterThanOrEqual(5);
     expect(layer.catalog.some(({ position: [x, y] }) => Math.abs(x) < 8 && Math.abs(y) < 8))
       .toBe(false);
+
+    layer.dispose();
+  });
+
+  it("fills most of the settled desktop field with individually readable clustered galaxies", () => {
+    const layer = createLocalGroup({ quality: { tier: "high", localGroupGalaxies: 260 } });
+    const stage = STAGES.find(({ id }) => id === "local-group");
+    const camera = new THREE.PerspectiveCamera(stage.camera.fov, 16 / 9, 0.1, 2000);
+    camera.position.fromArray(stage.camera.position);
+    camera.lookAt(new THREE.Vector3(...stage.camera.target));
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    const projectedX = layer.catalog.map(({ position }) => (
+      new THREE.Vector3(...position).project(camera).x
+    ));
+    const occupiedWidth = (Math.max(...projectedX) - Math.min(...projectedX)) / 2;
+    const nonHeroes = layer.catalog.slice(layer.root.userData.composition.heroCount);
+    const profileMaterial = layer.root.getObjectByName("local-group-spiral-batch").material;
+
+    expect(occupiedWidth).toBeGreaterThanOrEqual(0.6);
+    expect(occupiedWidth).toBeLessThanOrEqual(0.75);
+    expect(Math.min(...nonHeroes.map(({ size }) => size))).toBeGreaterThanOrEqual(4);
+    expect(profileMaterial.uniforms.uPointScale.value).toBeGreaterThanOrEqual(1.1);
+    expect(profileMaterial.uniforms.uIntensity.value).toBeGreaterThanOrEqual(1.15);
 
     layer.dispose();
   });
@@ -580,6 +604,26 @@ describe("createCosmicWebLayer", () => {
     layer.dispose();
   });
 
+  it("keeps the volumetric network vivid in the base pass before bloom", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+    const filaments = layer.root.getObjectByName("cosmic-web-filaments");
+    const particles = layer.root.getObjectByName("cosmic-web-particles");
+    const nodes = layer.root.getObjectByName("cosmic-web-nodes");
+    const hotNodes = layer.root.getObjectByName("cosmic-web-hot-nodes");
+    const depth = layer.root.getObjectByName("cosmic-web-depth");
+
+    expect([filaments, particles, nodes, hotNodes, depth].every(({ material }) => (
+      material.toneMapped === false
+    ))).toBe(true);
+    expect(particles.material).toMatchObject({ size: 7, opacity: 0.98 });
+    expect(nodes.material).toMatchObject({ size: 9.4, opacity: 0.96 });
+    expect(hotNodes.material).toMatchObject({ size: 14, opacity: 1 });
+    expect(depth.material).toMatchObject({ size: 4.6, opacity: 0.65 });
+    expect(Math.max(...filaments.geometry.getAttribute("color").array)).toBeGreaterThan(1);
+
+    layer.dispose();
+  });
+
   it.each([
     ["high", 18000, 120, 12, 0.58],
     ["medium", 9800, 92, 9, 0.52],
@@ -636,8 +680,15 @@ describe("createCosmicWebLayer", () => {
     layer.dispose();
   });
 
-  it("keeps every rendered geometry coordinate finite and inside the published volume", () => {
-    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 18000 } });
+  it.each([
+    ["high", 18000],
+    ["medium", 9800],
+    ["economy", 5200]
+  ])("keeps every rendered %s geometry coordinate finite and inside the published volume", (
+    tier,
+    cosmicWebPoints
+  ) => {
+    const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
     const { volume } = layer.root.userData.structure;
     const renderedGeometry = layer.root.children.filter(({ name, geometry }) => (
       name.startsWith("cosmic-web-") && geometry?.getAttribute("position")

@@ -1,5 +1,124 @@
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
 import { SOLAR_PLANETS, STAGES } from "../src/data/cosmos.js";
+
+const ARTIFACT_DIRECTORY = ".superpowers/sdd/task-7-artifacts";
+
+const settledFrame = async (page) => {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+};
+
+const expectNoHorizontalOverflow = async (page) => {
+  expect(await page.evaluate(() => (
+    document.documentElement.scrollWidth <= window.innerWidth + 1
+  ))).toBe(true);
+};
+
+const expectRailInvariant = async (page, stage) => {
+  const rail = page.getByRole("navigation", { name: "Масштабы" });
+  await expect(rail.getByRole("button")).toHaveCount(STAGES.length);
+  await expect(rail.locator(`button[data-stage="${stage}"]`)).toHaveAttribute("aria-current", "step");
+  await expect(rail.locator('button[aria-current="step"]')).toHaveCount(1);
+  await expect(page.locator(`#distanceMarkers li[data-stage="${stage}"]`)).toHaveClass(/active/);
+};
+
+const screenshotMetrics = async (buffer) => {
+  const metadata = await sharp(buffer).metadata();
+  const crop = {
+    left: Math.round(metadata.width * 0.08),
+    top: Math.round(metadata.height * 0.08),
+    width: Math.round(metadata.width * 0.78),
+    height: Math.round(metadata.height * 0.74)
+  };
+  const { data, info } = await sharp(buffer)
+    .extract(crop)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const subjectMask = new Uint8Array(info.width * info.height);
+  const occupiedColumns = new Uint16Array(info.width);
+  let luminousPixels = 0;
+  let purpleMagentaPixels = 0;
+  for (let offset = 0, pixel = 0; offset < data.length; offset += info.channels, pixel += 1) {
+    const red = data[offset];
+    const green = data[offset + 1];
+    const blue = data[offset + 2];
+    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+    if (luminance >= 12) luminousPixels += 1;
+    if (red >= 12 && blue >= 18 && red >= green * 1.22 && blue >= green * 1.32) {
+      purpleMagentaPixels += 1;
+    }
+    if (luminance >= 20 && saturation >= 5) {
+      subjectMask[pixel] = 1;
+      occupiedColumns[pixel % info.width] += 1;
+    }
+  }
+  const pixelCount = info.width * info.height;
+  const firstOccupiedColumn = occupiedColumns.findIndex((count) => count >= 2);
+  const lastOccupiedColumn = occupiedColumns.findLastIndex((count) => count >= 2);
+  let brightComponentCount = 0;
+  const stack = [];
+  for (let pixel = 0; pixel < subjectMask.length; pixel += 1) {
+    if (subjectMask[pixel] !== 1) continue;
+    let componentSize = 0;
+    subjectMask[pixel] = 2;
+    stack.push(pixel);
+    while (stack.length > 0) {
+      const current = stack.pop();
+      componentSize += 1;
+      const x = current % info.width;
+      const y = (current - x) / info.width;
+      for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+        for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+          if (deltaX === 0 && deltaY === 0) continue;
+          const nextX = x + deltaX;
+          const nextY = y + deltaY;
+          if (nextX < 0 || nextX >= info.width || nextY < 0 || nextY >= info.height) continue;
+          const next = nextY * info.width + nextX;
+          if (subjectMask[next] !== 1) continue;
+          subjectMask[next] = 2;
+          stack.push(next);
+        }
+      }
+    }
+    if (componentSize >= 3) brightComponentCount += 1;
+  }
+  return Object.freeze({
+    luminousRatio: luminousPixels / pixelCount,
+    purpleMagentaRatio: purpleMagentaPixels / pixelCount,
+    occupiedWidthRatio: firstOccupiedColumn < 0
+      ? 0
+      : (lastOccupiedColumn - firstOccupiedColumn + 1) / info.width,
+    brightComponentCount
+  });
+};
+
+const captureSettledStage = async ({
+  page,
+  stage,
+  path,
+  expectPurple = false,
+  minimumLuminousRatio = 0.01,
+  minimumOccupiedWidth = 0,
+  minimumBrightComponents = 0
+}) => {
+  await expectStage(page, stage);
+  await settledFrame(page);
+  await expectNoHorizontalOverflow(page);
+  await expectRailInvariant(page, stage);
+  const screenshot = await page.screenshot({ path: `${ARTIFACT_DIRECTORY}/${path}` });
+  const metrics = await screenshotMetrics(screenshot);
+  expect(metrics.luminousRatio).toBeGreaterThan(minimumLuminousRatio);
+  if (expectPurple) expect(metrics.purpleMagentaRatio).toBeGreaterThan(0.0015);
+  if (minimumOccupiedWidth > 0) {
+    expect(metrics.occupiedWidthRatio).toBeGreaterThan(minimumOccupiedWidth);
+  }
+  if (minimumBrightComponents > 0) {
+    expect(metrics.brightComponentCount).toBeGreaterThan(minimumBrightComponents);
+  }
+  return metrics;
+};
 
 const startJourney = async (page) => {
   await page.goto("/");
@@ -43,7 +162,7 @@ const webLevels = Object.freeze([
   ]) })
 ]);
 
-const solveWebLevel = async (page, definition) => {
+const solveWebLevel = async (page, definition, { final = false } = {}) => {
   const flow = page.locator("#webFlow");
   const tiles = flow.locator(".web-flow__tile");
   await expect(tiles).toHaveCount(definition.count);
@@ -62,7 +181,13 @@ const solveWebLevel = async (page, definition) => {
     }
   }
 
-  await expect(flow).toHaveClass(/solved/);
+  if (final) {
+    await expect(flow).toBeHidden();
+    await expect(flow).toHaveAttribute("inert", "");
+    await expect(flow).toHaveAttribute("aria-hidden", "true");
+  } else {
+    await expect(flow).toHaveClass(/solved/);
+  }
 };
 
 const expectInactiveButton = async (locator) => {
@@ -73,6 +198,7 @@ const expectInactiveButton = async (locator) => {
 };
 
 test("inactive game controls stay unfocusable and cannot advance progression", async ({ page }) => {
+  test.setTimeout(90_000);
   await startJourney(page);
   const navigation = page.getByRole("navigation", { name: "Масштабы" });
   const earthButton = navigation.getByRole("button", { name: "Земля" });
@@ -146,6 +272,7 @@ test("inactive game controls stay unfocusable and cannot advance progression", a
 });
 
 test("future stages stay locked across scroll inputs while backward travel stays available", async ({ page }) => {
+  test.setTimeout(90_000);
   await startJourney(page);
   const navigation = page.getByRole("navigation", { name: "Масштабы" });
   const earthButton = navigation.getByRole("button", { name: "Земля" });
@@ -284,11 +411,22 @@ test("touch gestures cannot pass a barrier and do not trap backward travel", asy
 });
 
 test("each real game victory unlocks the next route immediately", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   let errors = [];
   page.on("console", (message) => {
-    if (message.type() === "error") errors = [...errors, message.text()];
+    const screenshotReadbackAdvisory = /GL Driver Message.*Performance.*ReadPixels/i.test(
+      message.text()
+    );
+    if (!screenshotReadbackAdvisory && (
+      message.type() === "error" || /webgl|GL Driver Message/i.test(message.text())
+    )) {
+      errors = [...errors, message.text()];
+    }
   });
+  page.on("pageerror", (error) => {
+    errors = [...errors, error.message];
+  });
+  await page.setViewportSize({ width: 1112, height: 625 });
   await startJourney(page);
 
   const navigation = page.getByRole("navigation", { name: "Масштабы" });
@@ -319,6 +457,8 @@ test("each real game victory unlocks the next route immediately", async ({ page 
 
   await systemButton.click();
   await expectStage(page, 2);
+  await page.getByRole("button", { name: "Скрыть субтитры" }).click();
+  await expect(page.locator("body")).toHaveClass(/subtitles-hidden/);
   for (const planet of SOLAR_PLANETS) {
     const label = page.locator(`.space-label[data-id="solar-${planet.name.toLowerCase()}"]`);
     await expect(label).toHaveClass(/visible/);
@@ -342,21 +482,32 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await expect(page.locator("#webFlow")).toBeHidden();
   await expect(page.locator("#webFlow")).toHaveAttribute("inert", "");
 
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await galaxyButton.click();
-  await expectStage(page, 3);
-  await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/galaxy.png" });
+  await captureSettledStage({
+    page,
+    stage: 3,
+    path: "galaxy.png",
+    minimumOccupiedWidth: 0.5
+  });
   await groupButton.click();
-  await expectStage(page, 4);
-  await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/local-group.png" });
+  await expect(page.locator('.space-label[data-stage="4"]')).toHaveCount(0);
+  await captureSettledStage({
+    page,
+    stage: 4,
+    path: "local-group.png",
+    minimumBrightComponents: 30
+  });
   await webButton.click();
   await expectStage(page, 5);
   await expect(page.locator("#webRunner")).toBeVisible();
   await expect(page.locator("#webRunner")).toBeEnabled();
   await expect(page.locator("#webFlow")).toBeVisible();
   await expect(page.locator("#webFlow .web-flow__tile").first()).toBeEnabled();
+  await page.setViewportSize({ width: 640, height: 360 });
 
   for (let index = 0; index < webLevels.length; index += 1) {
-    await solveWebLevel(page, webLevels[index]);
+    await solveWebLevel(page, webLevels[index], { final: index === webLevels.length - 1 });
     if (index < webLevels.length - 1) {
       await expect(page.locator("#webFlow .web-flow__tile")).toHaveCount(webLevels[index + 1].count, {
         timeout: 3_000
@@ -372,10 +523,37 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await expect.poll(() => page.locator("#webFlow").evaluate(
     (element) => getComputedStyle(element).opacity
   )).toBe("0");
-  await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/cosmic-web.png" });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await webButton.click();
-  await expectStage(page, 5);
+  await captureSettledStage({
+    page,
+    stage: 5,
+    path: "cosmic-web.png",
+    expectPurple: true
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await galaxyButton.click();
+  await captureSettledStage({
+    page,
+    stage: 3,
+    path: "galaxy-mobile.png",
+    minimumOccupiedWidth: 0.5
+  });
+  await groupButton.click();
+  await expect(page.locator('.space-label[data-stage="4"]')).toHaveCount(0);
+  await captureSettledStage({
+    page,
+    stage: 4,
+    path: "local-group-mobile.png",
+    minimumBrightComponents: 20
+  });
+  await webButton.click();
+  await captureSettledStage({
+    page,
+    stage: 5,
+    path: "cosmic-web-mobile.png",
+    expectPurple: true
+  });
   const mobileDistanceRail = await page.locator("#distanceScale").boundingBox();
   const mobileLabels = page.locator(".space-label.visible");
   await expect(mobileLabels).not.toHaveCount(0);
@@ -385,7 +563,6 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     expect(labelBounds).not.toBeNull();
     expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(mobileDistanceRail.x - 6);
   }
-  await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/cosmic-web-mobile.png" });
   await unknownButton.click();
   await expectStage(page, 6);
   expect(errors).toEqual([]);

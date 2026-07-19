@@ -198,8 +198,9 @@ const createFilaments = (THREE, graph, tier) => {
   graph.edges.forEach(([from, to], edgeIndex) => {
     positions.push(...graph.nodes[from], ...graph.nodes[to]);
     const color = edgeIndex % 5 === 0 ? magenta : violet;
-    pushColor(colors, color, 1);
-    pushColor(colors, color, 1);
+    const intensity = edgeIndex < 2 ? 1 : 2;
+    pushColor(colors, color, intensity);
+    pushColor(colors, color, intensity);
   });
   const material = new THREE.LineBasicMaterial({
     transparent: true,
@@ -207,7 +208,8 @@ const createFilaments = (THREE, graph, tier) => {
     depthWrite: false,
     depthTest: true,
     vertexColors: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    toneMapped: false
   });
   const filaments = new THREE.LineSegments(createGeometry(THREE, positions, colors), material);
   filaments.name = "cosmic-web-filaments";
@@ -237,18 +239,19 @@ const createParticles = (THREE, graph, glowTexture, count, seed) => {
       start[2] + (end[2] - start[2]) * progress + boundedGaussian(random) * spread * 0.65
     );
     const color = index % 7 === 0 ? magenta : violet;
-    pushColor(colors, color, index % 13 === 0 ? 1 : 0.56 + random() * 0.4);
+    pushColor(colors, color, index % 13 === 0 ? 1.8 : 0.95 + random() * 0.6);
   }
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 3.35,
+    size: 7,
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.98,
     alphaTest: 0.01,
     depthWrite: false,
     depthTest: true,
     vertexColors: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    toneMapped: false
   });
   const particles = new THREE.Points(createGeometry(THREE, positions, colors), material);
   particles.name = "cosmic-web-particles";
@@ -263,7 +266,7 @@ const createNodes = (THREE, graph, glowTexture, quality, seed) => {
   const colors = [];
   const magenta = new THREE.Color(PALETTE[1]);
   const pink = new THREE.Color(PALETTE[2]);
-  graph.nodes.forEach((node) => {
+  graph.nodes.forEach((node, nodeIndex) => {
     for (let pointIndex = 0; pointIndex < pointsPerNode; pointIndex += 1) {
       const spread = pointIndex === 0 ? 0 : 3.2 + random() * 4.8;
       const offsetX = boundedGaussian(random) * spread;
@@ -271,19 +274,23 @@ const createNodes = (THREE, graph, glowTexture, quality, seed) => {
       const offsetZ = boundedGaussian(random) * spread * 0.62;
       positions.push(node[0] + offsetX, node[1] + offsetY, node[2] + offsetZ);
       const color = pointIndex === 0 ? pink : magenta;
-      pushColor(colors, color, pointIndex < 2 ? 1 : 0.5 + random() * 0.46);
+      const intensity = nodeIndex === 0 && pointIndex === 0
+        ? 1
+        : pointIndex < 2 ? 1.7 : 1 + random() * 0.5;
+      pushColor(colors, color, intensity);
     }
   });
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 4.8,
+    size: 9.4,
     transparent: true,
-    opacity: 0.78,
+    opacity: 0.96,
     alphaTest: 0.01,
     depthWrite: false,
     depthTest: true,
     vertexColors: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    toneMapped: false
   });
   const nodes = new THREE.Points(createGeometry(THREE, positions, colors), material);
   nodes.name = "cosmic-web-nodes";
@@ -313,14 +320,15 @@ const createHotNodes = (THREE, graph, glowTexture, hotNodeCount) => {
   const colors = indices.flatMap(() => [gold.r, gold.g, gold.b]);
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 8.4,
+    size: 14,
     transparent: true,
-    opacity: 0.94,
+    opacity: 1,
     alphaTest: 0.01,
     depthWrite: false,
     depthTest: true,
     vertexColors: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    toneMapped: false
   });
   const hotNodes = new THREE.Points(createGeometry(THREE, positions, colors), material);
   hotNodes.name = "cosmic-web-hot-nodes";
@@ -345,18 +353,19 @@ const createDepthField = (THREE, graph, glowTexture, pointBudget, seed) => {
       center[2] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.z
     );
     const color = index % 9 === 0 ? pink : violet;
-    pushColor(colors, color, 0.26 + random() * 0.34);
+    pushColor(colors, color, 0.8 + random() * 0.5);
   }
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 2.25,
+    size: 4.6,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.65,
     alphaTest: 0.01,
     depthWrite: false,
     depthTest: true,
     vertexColors: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    toneMapped: false
   });
   const depth = new THREE.Points(createGeometry(THREE, positions, colors), material);
   depth.name = "cosmic-web-depth";

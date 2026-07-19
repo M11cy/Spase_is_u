@@ -13,13 +13,13 @@ const HEROES_PER_TIER = Object.freeze({ high: 14, medium: 11, economy: 8 });
 const PROFILE_ASPECT = Object.freeze({ spiral: 1.78, elliptical: 1.34, irregular: 1.18 });
 const PROFILE_COLORS = Object.freeze({ warm: 0xffbd7a, cool: 0xb7d6ff });
 const CLUSTERS = Object.freeze([
-  Object.freeze([-104, 42, -145, 18, 13, 24]),
-  Object.freeze([-72, -35, -205, 24, 17, 32]),
-  Object.freeze([-18, 54, -268, 20, 14, 34]),
-  Object.freeze([48, -44, -326, 24, 16, 38]),
-  Object.freeze([96, 18, -388, 19, 15, 32]),
-  Object.freeze([-94, -2, -448, 18, 22, 30]),
-  Object.freeze([44, 52, -505, 21, 13, 28])
+  Object.freeze([-300, 76, -145, 38, 21, 24]),
+  Object.freeze([-205, -68, -205, 50, 27, 32]),
+  Object.freeze([-70, 92, -268, 42, 23, 34]),
+  Object.freeze([110, -84, -326, 52, 26, 38]),
+  Object.freeze([285, 42, -388, 42, 24, 32]),
+  Object.freeze([-280, -8, -448, 40, 34, 30]),
+  Object.freeze([165, 96, -505, 44, 22, 28])
 ]);
 const EMPTY_INTERACTIVE = Object.freeze([]);
 
@@ -157,7 +157,7 @@ const createCatalog = ({ count, heroCount, random }) => Object.freeze(Array.from
     id: `deep-field-${index}`,
     profile: PROFILE_ORDER[index % PROFILE_ORDER.length],
     position: sampleClusteredPosition(random, index),
-    size: index < heroCount ? 18 + random() * 22 : 2.4 + random() * 8.5,
+    size: index < heroCount ? 18 + random() * 22 : 4.2 + random() * 10.5,
     rotation: random() * Math.PI * 2,
     temperature: index % 7 === 0 ? "warm" : "cool"
   })
@@ -189,8 +189,8 @@ const createMaterial = (THREE, { profile = null, core = false }) => new THREE.Sh
   defines: profile ? { [`PROFILE_${profile.toUpperCase()}`]: 1 } : {},
   uniforms: {
     uPresence: { value: 1 },
-    uPointScale: { value: core ? 0.46 : 1 },
-    uIntensity: { value: core ? 1.72 : 1.08 }
+    uPointScale: { value: core ? 0.46 : 1.15 },
+    uIntensity: { value: core ? 1.72 : 1.18 }
   },
   vertexShader: VERTEX_SHADER,
   fragmentShader: core ? CORE_FRAGMENT_SHADER : PROFILE_FRAGMENT_SHADER,

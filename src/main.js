@@ -34,6 +34,7 @@ import {
   freezePositionedAnnotation,
   resolveCameraPose
 } from "./scene/create-scene.js";
+import { createDeepSpacePostprocessing } from "./scene/deep-space-postprocessing.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
 import { createCosmicWebLayer } from "./scene/layers/cosmic-web.js";
 import { createLocalGroupLayer } from "./scene/layers/local-group.js";
@@ -608,6 +609,9 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true,
   alpha: true
 });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.34;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x030711, 0.0026);
@@ -1242,6 +1246,13 @@ const cosmicWebLayer = createCosmicWebLayer({
 });
 group.add(cosmicWebLayer.root);
 
+const renderPipeline = createDeepSpacePostprocessing({
+  renderer,
+  scene,
+  camera,
+  quality,
+  reducedMotion
+});
 const sceneManager = createScene({
   THREE,
   canvas,
@@ -1250,6 +1261,7 @@ const sceneManager = createScene({
   scene,
   camera,
   cameraTarget,
+  renderPipeline,
   layers: Object.freeze([
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
     Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer }),
