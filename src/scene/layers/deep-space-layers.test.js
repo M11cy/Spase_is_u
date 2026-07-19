@@ -320,4 +320,59 @@ describe("createLocalGroupLayer", () => {
     first.dispose();
     second.dispose();
   });
+
+  it("uses restrained additive textured discs so opaque RGB image backgrounds cannot render as black panels", () => {
+    const opaqueRgbTexture = new THREE.DataTexture(
+      new Uint8Array([0, 0, 0, 255]),
+      1,
+      1,
+      THREE.RGBAFormat
+    );
+    const layer = createLocalGroup({ textureFor: () => opaqueRgbTexture });
+    const disc = layer.root.getObjectByName("group-andromeda-disc");
+
+    expect(disc.material.map).toBe(opaqueRgbTexture);
+    expect(disc.material.blending).toBe(THREE.AdditiveBlending);
+    expect(disc.material.transparent).toBe(true);
+    expect(disc.material.depthWrite).toBe(false);
+    expect(disc.material.opacity).toBeLessThanOrEqual(0.7);
+
+    layer.dispose();
+  });
+
+  it("forms arm bands and outward radial progression for spirals while irregular galaxies are asymmetric and clumped", () => {
+    const layer = createLocalGroup();
+    const spiralPositions = layer.root.getObjectByName("group-andromeda-stars").geometry.getAttribute("position").array;
+    const irregularPositions = layer.root.getObjectByName("group-lmc-stars").geometry.getAttribute("position").array;
+    const armCount = 4;
+    const radialDistance = (positions, index) => Math.hypot(positions[index * 3], positions[index * 3 + 1]);
+    const firstArmAngles = Array.from({ length: armCount }, (_, index) => (
+      Math.atan2(spiralPositions[index * 3 + 1], spiralPositions[index * 3])
+    )).sort((left, right) => left - right);
+    const gaps = firstArmAngles.map((angle, index) => (
+      (firstArmAngles[(index + 1) % armCount] - angle + Math.PI * 2) % (Math.PI * 2)
+    ));
+    const irregularMeanX = Array.from({ length: irregularPositions.length / 3 }, (_, index) => (
+      irregularPositions[index * 3]
+    )).reduce((sum, value) => sum + value, 0) / (irregularPositions.length / 3);
+
+    expect(gaps.every((gap) => gap > 1 && gap < 2.1)).toBe(true);
+    expect(radialDistance(spiralPositions, spiralPositions.length / 3 - armCount)).toBeGreaterThan(
+      radialDistance(spiralPositions, 0) * 4
+    );
+    expect(irregularMeanX).toBeGreaterThan(0.8);
+
+    layer.dispose();
+  });
+
+  it("scales each visible galaxy core from its own profile and size", () => {
+    const layer = createLocalGroup();
+    const andromedaCore = layer.root.getObjectByName("group-andromeda-core");
+    const lmcCore = layer.root.getObjectByName("group-lmc-core");
+
+    expect(andromedaCore.scale.x).toBeGreaterThan(6);
+    expect(andromedaCore.scale.x).toBeGreaterThan(lmcCore.scale.x);
+
+    layer.dispose();
+  });
 });

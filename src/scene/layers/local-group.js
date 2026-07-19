@@ -8,9 +8,9 @@ import {
 const LOCAL_GROUP_SEED = 20610422;
 const MIN_SIZE = 0.01;
 const PROFILE_CONFIG = Object.freeze({
-  spiral: Object.freeze({ aspect: 1.78, thickness: 0.36, stars: 84, discOpacity: 0.78 }),
-  irregular: Object.freeze({ aspect: 1.28, thickness: 0.68, stars: 54, discOpacity: 0.63 }),
-  elliptical: Object.freeze({ aspect: 1.14, thickness: 0.86, stars: 46, discOpacity: 0.7 })
+  spiral: Object.freeze({ aspect: 1.78, thickness: 0.36, stars: 84, discOpacity: 0.62, coreRatio: 0.34 }),
+  irregular: Object.freeze({ aspect: 1.28, thickness: 0.68, stars: 54, discOpacity: 0.5, coreRatio: 0.25 }),
+  elliptical: Object.freeze({ aspect: 1.14, thickness: 0.86, stars: 46, discOpacity: 0.56, coreRatio: 0.38 })
 });
 
 const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -96,11 +96,28 @@ const createStars = (THREE, annotation, profile, glowTexture) => {
   const colors = [];
   const size = annotation.size;
   for (let index = 0; index < config.stars; index += 1) {
-    const angle = random() * Math.PI * 2;
-    const radius = Math.sqrt(random());
-    const spiral = profile === "spiral" ? Math.sin(angle * 2.5 + radius * 7) * 0.18 : 0;
-    const x = Math.cos(angle + spiral) * radius * size * 0.78;
-    const y = Math.sin(angle) * radius * size * config.thickness * 0.4;
+    const arm = index % 4;
+    const progression = (Math.floor(index / 4) + random() * 0.55) / Math.ceil(config.stars / 4);
+    const smoothRadius = Math.sqrt(random());
+    const spiralRadius = size * (0.14 + progression * 0.74);
+    const spiralAngle = arm * Math.PI / 2 + progression * 5.4 + (random() - 0.5) * 0.09;
+    const clump = index % 3;
+    const clumpCenters = Object.freeze([
+      Object.freeze({ x: -0.18, y: 0.11 }),
+      Object.freeze({ x: 0.31, y: -0.08 }),
+      Object.freeze({ x: 0.55, y: 0.21 })
+    ]);
+    const clumpSpread = (random() + random() - 1) * 0.22;
+    const x = profile === "spiral"
+      ? Math.cos(spiralAngle) * spiralRadius
+      : profile === "irregular"
+        ? (clumpCenters[clump].x + clumpSpread) * size
+        : Math.cos(random() * Math.PI * 2) * smoothRadius * size * 0.78;
+    const y = profile === "spiral"
+      ? Math.sin(spiralAngle) * spiralRadius * 0.62
+      : profile === "irregular"
+        ? (clumpCenters[clump].y + clumpSpread * 0.72) * size
+        : Math.sin(random() * Math.PI * 2) * smoothRadius * size * config.thickness * 0.4;
     const z = (random() - 0.5) * size * config.thickness;
     const tone = 0.54 + random() * 0.46;
     positions.push(x, y, z);
@@ -134,7 +151,7 @@ const createDisc = (THREE, annotation, profile, texture) => {
     opacity: config.discOpacity,
     depthWrite: false,
     side: THREE.DoubleSide,
-    blending: THREE.NormalBlending
+    blending: THREE.AdditiveBlending
   });
   const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
   disc.name = `${annotation.id}-disc`;
@@ -143,7 +160,7 @@ const createDisc = (THREE, annotation, profile, texture) => {
   return disc;
 };
 
-const createCore = (THREE, annotation, glowTexture) => {
+const createCore = (THREE, annotation, profile, glowTexture) => {
   const material = new THREE.SpriteMaterial({
     map: glowTexture,
     color: annotation.color ?? 0xf6e4c4,
@@ -154,7 +171,8 @@ const createCore = (THREE, annotation, glowTexture) => {
   });
   const core = new THREE.Sprite(material);
   core.name = `${annotation.id}-core`;
-  core.scale.set(0.46, 0.46, 1);
+  const coreSize = annotation.size * PROFILE_CONFIG[profile].coreRatio;
+  core.scale.set(coreSize, coreSize, 1);
   core.renderOrder = 6;
   return core;
 };
@@ -193,7 +211,7 @@ const createGalaxy = ({ THREE, annotation, textureFor, glowTexture, position }) 
   const fallbackTexture = resolvedTexture ? null : createFallbackTexture(THREE, annotation, profile);
   const disc = createDisc(THREE, annotation, profile, resolvedTexture ?? fallbackTexture);
   const stars = createStars(THREE, annotation, profile, glowTexture);
-  const core = createCore(THREE, annotation, glowTexture);
+  const core = createCore(THREE, annotation, profile, glowTexture);
   galaxy.add(disc, stars, core);
   const faded = [disc, stars, core];
   faded.forEach((object) => {
