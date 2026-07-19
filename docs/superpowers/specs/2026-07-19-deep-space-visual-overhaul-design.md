@@ -138,3 +138,17 @@ related:
 - pixel gate Local Group проверяет заполнение bright-grid, а не только крайние X и число connected components;
 - при `<=760px` шкала расстояний становится компактным top-center overlay: все значения остаются в DOM для доступности, визуально показываются активное и соседние значения; overlay не занимает правый центр и не создаёт overflow;
 - все шесть кадров создаются заново после честных побед через публичный UI и проверяются в исходном разрешении.
+
+## Поправка 2026-07-20 — organic curved filament body
+
+> [!important] Реалистичность без изменения графа
+> Финальная pixel-проверка приняла плотность и композицию, но прямые длинные хорды всё ещё читаются как механическая триангуляция. Исправление затрагивает только rendered interpolation: `graph.nodes`, `graph.edges`, budgets, connectedness и published volume остаются неизменными.
+
+- Каждое ребро получает два детерминированных cubic Bézier control point, вычисленных из хорды и `edgeIndex`.
+- Lateral и vertical bend ограничиваются длиной ребра; control points предварительно inset/clamp внутри volume, чтобы не создавать скопление на стенках.
+- `cosmic-web-filaments` рендерит минимум десять LineSegments-сегментов на ребро вместо одной прямой хорды.
+- `cosmic-web-particles` использует тот же cubic sampler; multi-strand normal offset и bounded jitter применяются после вычисления кривой.
+- Цвет частиц чередует violet/magenta/pink, размер становится немного меньше для тонкой текстуры; golden hot nodes сохраняются без изменения общей экспозиции.
+- Unit gate проверяет meaningful fraction non-collinear intermediate samples, совпадение filament/particle curve contract, exact budgets, all-tier finite bounds и disposal.
+- Компактный mobile rail получает отдельную visually-hidden сводку всех `label: distance`; `aside` связывается с ней через `aria-describedby`, а визуальный сокращённый список исключается из accessibility tree через `aria-hidden`.
+- Все шесть кадров снова создаются честным public-UI маршрутом; synthetic curvature test не заменяет original-pixel inspection.
