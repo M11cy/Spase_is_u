@@ -376,6 +376,15 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await page.setViewportSize({ width: 390, height: 844 });
   await webButton.click();
   await expectStage(page, 5);
+  const mobileDistanceRail = await page.locator("#distanceScale").boundingBox();
+  const mobileLabels = page.locator(".space-label.visible");
+  await expect(mobileLabels).not.toHaveCount(0);
+  expect(mobileDistanceRail).not.toBeNull();
+  for (let index = 0; index < await mobileLabels.count(); index += 1) {
+    const labelBounds = await mobileLabels.nth(index).boundingBox();
+    expect(labelBounds).not.toBeNull();
+    expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(mobileDistanceRail.x - 6);
+  }
   await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/cosmic-web-mobile.png" });
   await unknownButton.click();
   await expectStage(page, 6);

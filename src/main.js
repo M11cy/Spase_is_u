@@ -61,6 +61,7 @@ const {
   couponSpin,
   couponResult,
   couponClose,
+  distanceScale,
   distanceMarkerItems,
   enginePuzzle,
   enginePuzzleBoard,
@@ -1349,10 +1350,16 @@ labels.forEach(({ data, element }) => {
 const labelSafeRightInset = nearSpaceComposition.labelSafeRightInset;
 const labelLayoutCoordinator = createLabelLayoutCoordinator({
   layout: layoutLabels,
-  getViewport: () => ({
-    width: Math.max(240, window.innerWidth - labelSafeRightInset),
-    height: window.innerHeight
-  }),
+  getViewport: () => {
+    const distanceBounds = distanceScale.hidden ? null : distanceScale.getBoundingClientRect();
+    const distanceScaleInset = distanceBounds
+      ? Math.max(0, window.innerWidth - distanceBounds.left + 6)
+      : 0;
+    return {
+      width: Math.max(1, window.innerWidth - Math.max(labelSafeRightInset, distanceScaleInset)),
+      height: window.innerHeight
+    };
+  },
   padding: 12,
   gap: 6
 });

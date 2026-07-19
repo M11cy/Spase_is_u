@@ -89,6 +89,30 @@ const createFallbackTexture = (THREE, annotation, profile) => {
   return texture;
 };
 
+const createEdgeMaskTexture = (THREE) => {
+  const resolution = 64;
+  const data = new Uint8Array(resolution * resolution * 4);
+  const innerRadius = 0.54;
+  const featherWidth = 0.44;
+  for (let y = 0; y < resolution; y += 1) {
+    for (let x = 0; x < resolution; x += 1) {
+      const horizontal = (x / (resolution - 1) - 0.5) * 2;
+      const vertical = (y / (resolution - 1) - 0.5) * 2;
+      const distance = Math.hypot(horizontal, vertical);
+      const feather = Math.min(1, Math.max(0, (distance - innerRadius) / featherWidth));
+      const alpha = Math.round((1 - feather * feather * (3 - 2 * feather)) * 255);
+      const index = (y * resolution + x) * 4;
+      data[index] = alpha;
+      data[index + 1] = alpha;
+      data[index + 2] = alpha;
+      data[index + 3] = alpha;
+    }
+  }
+  const texture = new THREE.DataTexture(data, resolution, resolution, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  return texture;
+};
+
 const createStars = (THREE, annotation, profile, glowTexture) => {
   const random = createSeededRandom(seedFor(annotation.id));
   const config = PROFILE_CONFIG[profile];
@@ -143,13 +167,15 @@ const createStars = (THREE, annotation, profile, glowTexture) => {
   return stars;
 };
 
-const createDisc = (THREE, annotation, profile, texture) => {
+const createDisc = (THREE, annotation, profile, texture, edgeMaskTexture) => {
   const config = PROFILE_CONFIG[profile];
   const material = new THREE.MeshBasicMaterial({
     map: texture,
+    alphaMap: edgeMaskTexture,
     color: 0xffffff,
     transparent: true,
     opacity: config.discOpacity,
+    alphaTest: 0.004,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending
@@ -210,7 +236,8 @@ const createGalaxy = ({ THREE, annotation, textureFor, glowTexture, position }) 
   galaxy.userData.tilt = Object.freeze({ x: galaxy.rotation.x, y: galaxy.rotation.y, z: galaxy.rotation.z });
   const resolvedTexture = safelyResolveTexture(textureFor, annotation);
   const fallbackTexture = resolvedTexture ? null : createFallbackTexture(THREE, annotation, profile);
-  const disc = createDisc(THREE, annotation, profile, resolvedTexture ?? fallbackTexture);
+  const edgeMaskTexture = createEdgeMaskTexture(THREE);
+  const disc = createDisc(THREE, annotation, profile, resolvedTexture ?? fallbackTexture, edgeMaskTexture);
   const stars = createStars(THREE, annotation, profile, glowTexture);
   const core = createCore(THREE, annotation, profile, glowTexture);
   galaxy.add(disc, stars, core);
@@ -218,7 +245,7 @@ const createGalaxy = ({ THREE, annotation, textureFor, glowTexture, position }) 
   faded.forEach((object) => {
     object.userData.baseOpacity = object.userData.baseOpacity ?? object.material?.opacity ?? 1;
   });
-  return Object.freeze({ galaxy, fallbackTexture, faded: Object.freeze(faded) });
+  return Object.freeze({ galaxy, fallbackTexture, edgeMaskTexture, faded: Object.freeze(faded) });
 };
 
 export const createLocalGroupLayer = (input) => {
@@ -261,6 +288,7 @@ export const createLocalGroupLayer = (input) => {
   const interactive = Object.freeze(records.map(({ marker }) => marker).filter(Boolean));
   const fadedObjects = Object.freeze(records.flatMap(({ faded }) => faded));
   const fallbackTextures = Object.freeze(records.map(({ fallbackTexture }) => fallbackTexture).filter(Boolean));
+  const edgeMaskTextures = Object.freeze(records.map(({ edgeMaskTexture }) => edgeMaskTexture));
   let disposed = false;
 
   const setPresence = (value) => {
@@ -288,6 +316,7 @@ export const createLocalGroupLayer = (input) => {
       disposed = true;
       disposeObjectTree(root);
       fallbackTextures.forEach((texture) => texture.dispose());
+      edgeMaskTextures.forEach((texture) => texture.dispose());
     }
   });
 };

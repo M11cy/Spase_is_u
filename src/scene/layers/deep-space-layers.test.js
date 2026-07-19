@@ -341,6 +341,33 @@ describe("createLocalGroupLayer", () => {
     layer.dispose();
   });
 
+  it("feathers every source texture with a soft radial alpha mask and disposes the mask once", () => {
+    const sourceTexture = new THREE.Texture();
+    const layer = createLocalGroup({ textureFor: () => sourceTexture });
+    const disc = layer.root.getObjectByName("group-andromeda-disc");
+    const alphaMask = disc.material.alphaMap;
+
+    expect(alphaMask).toBeInstanceOf(THREE.DataTexture);
+    expect(alphaMask).not.toBe(sourceTexture);
+    expect(alphaMask.image.width).toBeGreaterThanOrEqual(32);
+    expect(alphaMask.image.height).toBe(alphaMask.image.width);
+
+    const pixels = alphaMask.image.data;
+    const resolution = alphaMask.image.width;
+    const channelAt = (x, y) => pixels[(y * resolution + x) * 4 + 1];
+    expect(channelAt(0, 0)).toBe(0);
+    expect(channelAt(resolution - 1, resolution - 1)).toBe(0);
+    expect(channelAt(Math.floor(resolution / 2), Math.floor(resolution / 2))).toBeGreaterThan(245);
+    expect(channelAt(Math.floor(resolution * 0.82), Math.floor(resolution / 2))).toBeGreaterThan(0);
+    expect(channelAt(Math.floor(resolution * 0.82), Math.floor(resolution / 2))).toBeLessThan(245);
+
+    const dispose = vi.spyOn(alphaMask, "dispose");
+    layer.dispose();
+    layer.dispose();
+
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("forms arm bands and outward radial progression for spirals while irregular galaxies are asymmetric and clumped", () => {
     const layer = createLocalGroup();
     const spiralPositions = layer.root.getObjectByName("group-andromeda-stars").geometry.getAttribute("position").array;
