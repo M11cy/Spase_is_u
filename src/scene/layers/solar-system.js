@@ -9,10 +9,10 @@ const textureEntryFor = (textures, planet) => (
 
 const textureFrom = (entry) => entry?.texture ?? (entry?.isTexture ? entry : null);
 
-const createPlanetAnnotation = (planet, mesh) => Object.freeze({
+const createPlanetAnnotation = (planet, mesh, stage) => Object.freeze({
   id: `solar-${planet.name.toLowerCase()}`,
   title: planet.title,
-  stage: 2,
+  stage,
   text: planet.text,
   discovery: planet.discovery,
   distance: planet.distance,
@@ -23,6 +23,7 @@ const createPlanetAnnotation = (planet, mesh) => Object.freeze({
 
 export const createSolarSystemLayer = ({
   THREE,
+  stage,
   planets,
   textures = new Map(),
   quality = {},
@@ -128,7 +129,7 @@ export const createSolarSystemLayer = ({
       0,
       Math.sin(planet.angle) * displayRadius
     );
-    mesh.userData.annotation = createPlanetAnnotation(planet, mesh);
+    mesh.userData.annotation = createPlanetAnnotation(planet, mesh, stage);
     root.add(mesh);
 
     if (planet.name === "Saturn") {

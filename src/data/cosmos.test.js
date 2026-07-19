@@ -8,6 +8,19 @@ describe("cosmos route", () => {
     ]);
   });
 
+  it("maps each approved stage id to its immutable route index", () => {
+    expect(STAGE_INDEX).toEqual({
+      place: 0,
+      earth: 1,
+      "solar-system": 2,
+      "milky-way": 3,
+      "local-group": 4,
+      "cosmic-web": 5,
+      unknown: 6
+    });
+    expect(Object.isFrozen(STAGE_INDEX)).toBe(true);
+  });
+
   it("contains no heliosphere or Voyager data", () => {
     expect(JSON.stringify({ STAGES, OBJECTS, ANNOTATIONS }).toLowerCase()).not.toMatch(/heliosphere|гелиосфер|voyager/);
   });

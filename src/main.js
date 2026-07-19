@@ -11,7 +11,7 @@ import { createEngineImageDataUri, createEnginePuzzle } from "./core/engine-puzz
 import { createWebFlowGame } from "./core/web-flow-game.js";
 import { createCouponWheel } from "./core/coupon-wheel.js";
 import { computeStageState, interpolateCamera } from "./core/stage-state.js";
-import { ANNOTATIONS, OBJECTS, SOLAR_PLANETS, STAGES } from "./data/cosmos.js";
+import { ANNOTATIONS, OBJECTS, SOLAR_PLANETS, STAGES, STAGE_INDEX } from "./data/cosmos.js";
 import {
   WORLD_IMAGERY_ATTRIBUTION,
   WORLD_IMAGERY_URL,
@@ -226,14 +226,13 @@ const narrationCues = {
 };
 
 const stageNarration = new Map([
-  [0, "homeStart"],
-  [1, "earthArrival"],
-  [2, "solarArrival"],
-  [3, "solarDeparture"],
-  [4, "milkyWay"],
-  [5, "localGroup"],
-  [6, "universeArrival"],
-  [7, "finalOne"]
+  [STAGE_INDEX.place, "homeStart"],
+  [STAGE_INDEX.earth, "earthArrival"],
+  [STAGE_INDEX["solar-system"], "solarArrival"],
+  [STAGE_INDEX["milky-way"], "milkyWay"],
+  [STAGE_INDEX["local-group"], "localGroup"],
+  [STAGE_INDEX["cosmic-web"], "universeArrival"],
+  [STAGE_INDEX.unknown, "finalOne"]
 ]);
 
 const narrationAudio = new Audio();
@@ -244,7 +243,7 @@ const journeyState = {
   userInteracted: false,
   voiceEnabled: false,
   currentCue: "homeStart",
-  lastExactStage: 0,
+  lastExactStage: STAGE_INDEX.place,
   rocketPrompted: false,
   rocketCaught: false,
   earthShipReady: false,
@@ -350,7 +349,7 @@ function markUserInteraction() {
 }
 
 function updateMissionForStage() {
-  if (activeStage === 1 && !journeyState.rocketCaught) {
+  if (activeStage === STAGE_INDEX.earth && !journeyState.rocketCaught) {
     if (!journeyState.earthShipReady) {
       showMission("");
       return;
@@ -359,7 +358,7 @@ function updateMissionForStage() {
     return;
   }
 
-  if (activeStage === 2) {
+  if (activeStage === STAGE_INDEX["solar-system"]) {
     const count = journeyState.artifactIds.size;
     const total = journeyState.artifactTotal || solarPlanets.length;
     if (journeyState.solarComplete) {
@@ -374,12 +373,12 @@ function updateMissionForStage() {
     return;
   }
 
-  if (activeStage === 5 && !journeyState.webComplete) {
+  if (activeStage === STAGE_INDEX["cosmic-web"] && !journeyState.webComplete) {
     showMission(journeyState.webQuestStarted ? "Поворачивай кусочки, собирая нить от галактики к дальнему узлу." : "Поверни кусочки нитей и соедини нашу галактику с дальним узлом.");
     return;
   }
 
-  if (activeStage === 6) {
+  if (activeStage === STAGE_INDEX.unknown) {
     if (journeyState.finalStep === 0) {
       showMission("Нажми «Зажечь звезду», чтобы продолжить рассказ.");
       return;
@@ -400,18 +399,18 @@ function updateMissionForStage() {
 }
 
 function cueForStageState(stage, exactStage = stage) {
-  if (stage === 0) {
+  if (stage === STAGE_INDEX.place) {
     return exactStage > 0.18 ? "homeZoomOut" : "homeStart";
   }
 
-  if (stage === 1) {
+  if (stage === STAGE_INDEX.earth) {
     if (!journeyState.rocketPrompted) {
       return "earthArrival";
     }
     return journeyState.rocketCaught ? "earthRocketCaught" : "earthRocketPrompt";
   }
 
-  if (stage === 2) {
+  if (stage === STAGE_INDEX["solar-system"]) {
     if (journeyState.solarComplete) {
       return "solarComplete";
     }
@@ -424,7 +423,7 @@ function cueForStageState(stage, exactStage = stage) {
     return "solarArrival";
   }
 
-  if (stage === 5) {
+  if (stage === STAGE_INDEX["cosmic-web"]) {
     if (journeyState.webComplete) {
       return "universeComplete";
     }
@@ -434,7 +433,7 @@ function cueForStageState(stage, exactStage = stage) {
     return "universeArrival";
   }
 
-  if (stage === 6) {
+  if (stage === STAGE_INDEX.unknown) {
     if (journeyState.finalStep >= 2) {
       return "finalStar";
     }
@@ -448,55 +447,55 @@ function cueForStageState(stage, exactStage = stage) {
 }
 
 function cueForScrollPosition(exactStage) {
-  if (exactStage < 0.2) {
+  if (exactStage < STAGE_INDEX.place + 0.2) {
     return "homeStart";
   }
 
-  if (exactStage < 0.72) {
+  if (exactStage < STAGE_INDEX.place + 0.72) {
     return "homeZoomOut";
   }
 
-  if (exactStage < 1.24) {
-    return cueForStageState(1, exactStage);
+  if (exactStage < STAGE_INDEX.earth + 0.24) {
+    return cueForStageState(STAGE_INDEX.earth, exactStage);
   }
 
-  if (exactStage < 1.78) {
-    return journeyState.rocketCaught ? "earthDeparture" : cueForStageState(1, exactStage);
+  if (exactStage < STAGE_INDEX.earth + 0.78) {
+    return journeyState.rocketCaught ? "earthDeparture" : cueForStageState(STAGE_INDEX.earth, exactStage);
   }
 
-  if (exactStage < 2.34) {
-    return cueForStageState(2, exactStage);
+  if (exactStage < STAGE_INDEX["solar-system"] + 0.34) {
+    return cueForStageState(STAGE_INDEX["solar-system"], exactStage);
   }
 
-  if (exactStage < 2.5) {
-    return journeyState.solarComplete ? "solarDeparture" : cueForStageState(2, exactStage);
+  if (exactStage < STAGE_INDEX["solar-system"] + 0.5) {
+    return journeyState.solarComplete ? "solarDeparture" : cueForStageState(STAGE_INDEX["solar-system"], exactStage);
   }
 
-  if (exactStage < 3.26) {
+  if (exactStage < STAGE_INDEX["milky-way"] + 0.26) {
     return "milkyWay";
   }
 
-  if (exactStage < 3.76) {
+  if (exactStage < STAGE_INDEX["milky-way"] + 0.76) {
     return "milkyWayDeparture";
   }
 
-  if (exactStage < 4.26) {
+  if (exactStage < STAGE_INDEX["local-group"] + 0.26) {
     return "localGroup";
   }
 
-  if (exactStage < 4.76) {
+  if (exactStage < STAGE_INDEX["local-group"] + 0.76) {
     return "localGroupDeparture";
   }
 
-  if (exactStage < 5.26) {
-    return cueForStageState(5, exactStage);
+  if (exactStage < STAGE_INDEX["cosmic-web"] + 0.26) {
+    return cueForStageState(STAGE_INDEX["cosmic-web"], exactStage);
   }
 
-  if (exactStage < 5.76) {
+  if (exactStage < STAGE_INDEX.unknown - 0.24) {
     return "unknownTransition";
   }
 
-  return cueForStageState(6, exactStage);
+  return cueForStageState(STAGE_INDEX.unknown, exactStage);
 }
 
 function handleNarrationFromStage(exactStage, previousStage) {
@@ -562,8 +561,8 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x030711, 0.0026);
 
 const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 1200);
-camera.position.set(0, 7, stages[0].camera.position[2]);
-const cameraTarget = new THREE.Vector3(...stages[0].camera.target);
+camera.position.set(0, 7, stages[STAGE_INDEX.place].camera.position[2]);
+const cameraTarget = new THREE.Vector3(...stages[STAGE_INDEX.place].camera.target);
 
 const group = new THREE.Group();
 scene.add(group);
@@ -814,6 +813,7 @@ scene.add(earthKeyLight, earthKeyLight.target);
 
 const solarSystemLayer = createSolarSystemLayer({
   THREE,
+  stage: STAGE_INDEX["solar-system"],
   planets: solarPlanets,
   textures: solarTextures,
   quality,
@@ -835,7 +835,7 @@ function scheduleEarthShipReveal() {
     earthShipRevealTimer = null;
     journeyState.earthShipReady = true;
     syncJourneyClasses();
-    if (activeStage === 1) updateMissionForStage();
+    if (activeStage === STAGE_INDEX.earth) updateMissionForStage();
   }, 5500);
 }
 
@@ -1026,7 +1026,7 @@ function advanceFinale() {
 }
 
 function handlePanelNarration(data) {
-  if (data.id === "earth" && activeStage === 1) {
+  if (data.id === "earth" && activeStage === STAGE_INDEX.earth) {
     promptRocketCatch();
     return;
   }
@@ -1036,7 +1036,7 @@ function handlePanelNarration(data) {
     return;
   }
 
-  if (data.stage === 5) {
+  if (data.stage === STAGE_INDEX["cosmic-web"]) {
     startWebQuest();
   }
 }
@@ -1288,13 +1288,13 @@ const sceneManager = createScene({
   cameraTarget,
   layers: Object.freeze([
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
-    Object.freeze({ stage: 2, layer: solarSystemLayer })
+    Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer })
   ]),
   interactive: Object.freeze([...interactive])
 });
 let hovered = null;
 let activeObject = null;
-let activeStage = 0;
+let activeStage = STAGE_INDEX.place;
 let journeyStarted = false;
 let introElapsed = 0;
 let lastAnimationTime = null;
@@ -1341,7 +1341,11 @@ const labelTargets = [
   ...solarAnnotations,
   ...galaxyAnnotations,
   ...groupGalaxyAnnotations,
-  ...regionAnnotations.filter((annotation) => ![3, 4, 6].includes(annotation.stage))
+  ...regionAnnotations.filter((annotation) => ![
+    STAGE_INDEX["milky-way"],
+    STAGE_INDEX["local-group"],
+    STAGE_INDEX.unknown
+  ].includes(annotation.stage))
 ];
 const labels = labelTargets.map((data, index) => Object.freeze({
   data,
@@ -1492,7 +1496,7 @@ function updateStage() {
   });
   const { exactStage, transitionAmount } = currentStageState;
   activeStage = currentStageState.activeStage;
-  if (activeStage === 1) scheduleEarthShipReveal();
+  if (activeStage === STAGE_INDEX.earth) scheduleEarthShipReveal();
   const lower = Math.floor(exactStage);
   const upper = Math.min(stages.length - 1, lower + 1);
   const mix = THREE.MathUtils.smootherstep(exactStage - lower, 0, 1);
@@ -1543,7 +1547,9 @@ function updateStage() {
   document.body.dataset.stage = String(activeStage);
   handleNarrationFromStage(exactStage, previousStage);
 
-  const bokehOpacity = journeyTransitionAmount * 0.8 + layerOpacities[5] * 1.2 + layerOpacities[6] * 0.85;
+  const bokehOpacity = journeyTransitionAmount * 0.8
+    + layerOpacities[STAGE_INDEX["cosmic-web"]] * 1.2
+    + layerOpacities[STAGE_INDEX.unknown] * 0.85;
   bokehField.visible = bokehOpacity > 0.03;
   bokehField.children.forEach((sprite) => {
     sprite.material.opacity = sprite.userData.baseOpacity * bokehOpacity;
@@ -1564,22 +1570,22 @@ function updateStage() {
 
   updateEarthRenderTelemetry(layerOpacities);
 
-  const unknownOpacity = layerOpacities[6];
+  const unknownOpacity = layerOpacities[STAGE_INDEX.unknown];
   unknownLayer.style.opacity = String(unknownOpacity);
   unknownLayer.style.transform = `translateY(${(1 - unknownOpacity) * 18}px)`;
 
   const midStarOpacity = Math.max(
-    layerOpacities[2] * 0.72,
-    layerOpacities[3] * 0.56,
-    layerOpacities[6] * 0.9,
+    layerOpacities[STAGE_INDEX["solar-system"]] * 0.72,
+    layerOpacities[STAGE_INDEX["milky-way"]] * 0.56,
+    layerOpacities[STAGE_INDEX.unknown] * 0.9,
     journeyTransitionAmount * 0.9
   );
   midSpaceStars.visible = midStarOpacity > 0.03;
   midSpaceStars.material.opacity = Math.min(0.9, midStarOpacity * 0.78);
 
   const nearStarOpacity = Math.max(
-    layerOpacities[1] * 0.78,
-    layerOpacities[2] * 0.86,
+    layerOpacities[STAGE_INDEX.earth] * 0.78,
+    layerOpacities[STAGE_INDEX["solar-system"]] * 0.86,
     journeyTransitionAmount * 0.35
   );
   nearSpaceStars.visible = nearStarOpacity > 0.03;
@@ -1587,7 +1593,7 @@ function updateStage() {
 
   updateLabels(layerOpacities);
 
-  const galaxyOpacity = layerOpacities[3];
+  const galaxyOpacity = layerOpacities[STAGE_INDEX["milky-way"]];
   galaxy.visible = galaxyOpacity > 0.03;
   galaxy.material.opacity = galaxyOpacity * 0.72;
   milkyWayGlow.visible = galaxyOpacity > 0.03;
@@ -1598,13 +1604,13 @@ function updateStage() {
     marker.visible = galaxyAnnotationMarkers.visible;
     marker.material.opacity = marker.userData.baseOpacity * galaxyAnnotationOpacity;
   });
-  const localGroupOpacity = layerOpacities[4];
+  const localGroupOpacity = layerOpacities[STAGE_INDEX["local-group"]];
   localGroup.visible = localGroupOpacity > 0.03;
   localGroup.children.forEach((dot) => {
     dot.material.opacity = dot.userData.baseOpacity * localGroupOpacity;
     dot.visible = localGroup.visible;
   });
-  const cosmicWebOpacity = layerOpacities[5];
+  const cosmicWebOpacity = layerOpacities[STAGE_INDEX["cosmic-web"]];
   cosmicWebPoints.visible = cosmicWebOpacity > 0.03;
   cosmicWebPoints.material.opacity = cosmicWebOpacity * 1.35;
   cosmicWebPlane.visible = cosmicWebOpacity > 0.03;
@@ -1654,7 +1660,7 @@ function onClick(event) {
     return;
   }
 
-  if (activeStage === 6 && !hovered) {
+  if (activeStage === STAGE_INDEX.unknown && !hovered) {
     if (journeyState.finalStep === 2) {
       placeStar(event.clientX, event.clientY);
     }
@@ -1669,7 +1675,7 @@ function onClick(event) {
   const stageObject =
     regionAnnotations.find((object) => object.stage === currentStageState.activeStage) ??
     (currentStageState.activeStage === earthAnnotation.stage ? earthAnnotation : null);
-  if (stageObject && currentStageState.activeStage > 0) {
+  if (stageObject && currentStageState.activeStage > STAGE_INDEX.place) {
     openPanel(stageObject);
     return;
   }
@@ -1731,7 +1737,10 @@ function animate(timestamp = performance.now()) {
 
   if (journeyStarted) {
     updateStage();
-    rocketGame.update({ delta, active: activeStage === 1 && !journeyState.rocketCaught && journeyState.earthShipReady });
+    rocketGame.update({
+      delta,
+      active: activeStage === STAGE_INDEX.earth && !journeyState.rocketCaught && journeyState.earthShipReady
+    });
   } else {
     renderIntro(delta);
   }
