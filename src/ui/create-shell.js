@@ -248,6 +248,41 @@ export function createShell({ root, stages }) {
     });
   };
 
+  const setGameControlAccess = ({
+    rocketActive = false,
+    engineActive = false,
+    webActive = false,
+    finaleActive = false
+  } = {}) => {
+    const setButtonAccess = (button, isActive) => {
+      const active = isActive === true;
+      button.hidden = !active;
+      button.disabled = !active;
+      if (active) {
+        button.removeAttribute("tabindex");
+        button.removeAttribute("aria-hidden");
+      } else {
+        button.tabIndex = -1;
+        button.setAttribute("aria-hidden", "true");
+      }
+    };
+
+    setButtonAccess(rocketCatcher, rocketActive);
+    rocketShip.hidden = rocketActive !== true;
+    setButtonAccess(enginePuzzleOpen, engineActive);
+    setButtonAccess(webRunner, webActive);
+    setButtonAccess(starMaker, finaleActive);
+
+    const activeWeb = webActive === true;
+    webFlow.hidden = !activeWeb;
+    webFlow.toggleAttribute("inert", !activeWeb);
+    if (activeWeb) {
+      webFlow.removeAttribute("aria-hidden");
+    } else {
+      webFlow.setAttribute("aria-hidden", "true");
+    }
+  };
+
   const toggleDistanceScale = () => {
     const isExpanded = distanceSummary.getAttribute("aria-expanded") === "true";
     const nextExpanded = !isExpanded;
@@ -262,6 +297,7 @@ export function createShell({ root, stages }) {
 
   distanceSummary.addEventListener("click", toggleDistanceScale);
   setActiveStage(0);
+  setGameControlAccess();
 
   const panelFields = Object.freeze({
     scale: root.querySelector("#panelScale"),
@@ -327,6 +363,7 @@ export function createShell({ root, stages }) {
     enginePuzzleClose,
     setActiveStage,
     setStageAccess,
+    setGameControlAccess,
     dispose: () => distanceSummary.removeEventListener("click", toggleDistanceScale)
   });
 }

@@ -15,6 +15,11 @@ import {
   blockReasonForStage,
   clampStageTarget,
   getHighestUnlockedStage,
+  isEngineGameAvailable,
+  isFinaleGameAvailable,
+  isRocketGameAvailable,
+  isSolarCollectionAvailable,
+  isWebGameAvailable,
   scrollYForStage
 } from "./core/stage-access.js";
 import { ANNOTATIONS, OBJECTS, SOLAR_PLANETS, STAGES, STAGE_INDEX } from "./data/cosmos.js";
@@ -103,7 +108,7 @@ let enginePuzzleStarted = false;
 const webFlowGame = createWebFlowGame({
   container: webFlow,
   onStart: () => startWebQuest(),
-  onLevel: (index, total) => showMission(`Уровень ${index} из ${total} собран! Дальше — сложнее.`),
+  onLevel: (index, total) => announceWebLevel(index, total),
   onComplete: () => completeWebPath()
 });
 createCouponWheel({ wheelElement: couponWheel, spinButton: couponSpin, resultElement: couponResult });
@@ -290,6 +295,7 @@ function syncJourneyClasses() {
     journeyState.artifactTotal > 0 && journeyState.artifactIds.size >= journeyState.artifactTotal
   );
   document.body.classList.toggle("engine-assembled", journeyState.solarComplete);
+  syncGameControlAccess();
 }
 
 function showMission(message = "") {
@@ -303,6 +309,7 @@ function syncStageAccess() {
     reason: blockReasonForStage({ stages, journeyState })
   });
   shell.setStageAccess(stageAccess);
+  syncGameControlAccess();
   return stageAccess;
 }
 
@@ -884,6 +891,68 @@ const solarAnnotations = Object.freeze(solarSystemLayer.interactive.map(
 const solarArtifactIds = new Set(solarAnnotations.map((annotation) => annotation.id));
 journeyState.artifactTotal = solarArtifactIds.size;
 
+const canCatchRocket = () => isRocketGameAvailable({
+  journeyStarted,
+  activeStage,
+  earthStage: STAGE_INDEX.earth,
+  earthShipReady: journeyState.earthShipReady,
+  rocketCaught: journeyState.rocketCaught
+});
+
+const canCollectSolarArtifacts = () => isSolarCollectionAvailable({
+  journeyStarted,
+  activeStage,
+  solarStage: STAGE_INDEX["solar-system"],
+  solarComplete: journeyState.solarComplete
+});
+
+const canUseEnginePuzzle = () => isEngineGameAvailable({
+  journeyStarted,
+  activeStage,
+  solarStage: STAGE_INDEX["solar-system"],
+  solarComplete: journeyState.solarComplete,
+  artifactIds: journeyState.artifactIds,
+  requiredArtifactIds: solarArtifactIds
+});
+
+const canUseWebPuzzle = () => isWebGameAvailable({
+  journeyStarted,
+  activeStage,
+  webStage: STAGE_INDEX["cosmic-web"],
+  highestUnlockedStage: stageAccess.highestUnlockedStage,
+  solarComplete: journeyState.solarComplete,
+  webComplete: journeyState.webComplete
+});
+
+const canUseFinale = () => isFinaleGameAvailable({
+  journeyStarted,
+  activeStage,
+  finaleStage: STAGE_INDEX.unknown,
+  webComplete: journeyState.webComplete
+});
+
+function syncGameControlAccess() {
+  const rocketActive = canCatchRocket();
+  const engineAvailable = canUseEnginePuzzle();
+  const webActive = canUseWebPuzzle();
+  const finaleActive = canUseFinale();
+
+  if (!engineAvailable && !enginePuzzle.hidden) {
+    if (enginePuzzle.contains(document.activeElement)) document.activeElement.blur();
+    enginePuzzle.hidden = true;
+  }
+
+  rocketGame.setActive(rocketActive);
+  enginePuzzleGame.setActive(engineAvailable && !enginePuzzle.hidden);
+  webFlowGame.setActive(webActive);
+  shell.setGameControlAccess({
+    rocketActive,
+    engineActive: engineAvailable && enginePuzzle.hidden,
+    webActive,
+    finaleActive
+  });
+}
+
 // The rocket fades in only after the first Earth line ("Вот она, Земля… Нужен
 // корабль") has had time to play, instead of popping in during the transition.
 function scheduleEarthShipReveal() {
@@ -911,6 +980,9 @@ function promptRocketCatch() {
 }
 
 function catchRocket() {
+  if (!canCatchRocket()) {
+    return;
+  }
   markUserInteraction();
 
   if (!journeyState.rocketPrompted) {
@@ -939,7 +1011,7 @@ function catchRocket() {
 // Plays the breakdown → quest briefing (once each) when the player starts
 // inspecting planets, before any quiz is solved.
 function ensureSolarBriefing() {
-  if (journeyState.solarComplete) {
+  if (!canCollectSolarArtifacts()) {
     return;
   }
 
@@ -954,7 +1026,13 @@ function ensureSolarBriefing() {
 
 // Collects an engine part — only reached once the planet's quiz is answered.
 function collectSolarArtifact(data) {
-  if (!solarArtifactIds.has(data.id) || journeyState.solarComplete) {
+  const quizState = shell.panelFields.quiz.dataset.state;
+  if (
+    !canCollectSolarArtifacts()
+    || activeObject?.id !== data?.id
+    || quizState !== "solved"
+    || !solarArtifactIds.has(data.id)
+  ) {
     return;
   }
 
@@ -977,24 +1055,35 @@ function collectSolarArtifact(data) {
 // The engine-assembly puzzle: opened once all parts are gathered, solved by
 // swapping tiles into place, which finishes the solar-system stage.
 function openEnginePuzzle() {
-  markUserInteraction();
-  if (journeyState.solarComplete) {
+  if (!canUseEnginePuzzle()) {
     return;
   }
-  if (!enginePuzzleStarted) {
-    enginePuzzleGame.shuffle();
-    enginePuzzleStarted = true;
-  }
+  markUserInteraction();
   closeAnnotation();
   enginePuzzle.hidden = false;
+  enginePuzzleGame.setActive(true);
+  if (!enginePuzzleStarted) {
+    if (!enginePuzzleGame.shuffle()) {
+      closeEnginePuzzle();
+      return;
+    }
+    enginePuzzleStarted = true;
+  }
+  syncGameControlAccess();
 }
 
 function closeEnginePuzzle() {
   enginePuzzle.hidden = true;
+  syncGameControlAccess();
 }
 
 function completeEngine() {
-  if (journeyState.solarComplete) {
+  if (
+    !canUseEnginePuzzle()
+    || enginePuzzle.hidden
+    || enginePuzzleStarted !== true
+    || enginePuzzleGame.solved !== true
+  ) {
     return;
   }
   journeyState.solarComplete = true;
@@ -1008,19 +1097,30 @@ function completeEngine() {
 // Begins the cosmic-web flow puzzle (first tile the player rotates). The quest
 // narration plays exactly once here.
 function startWebQuest() {
-  markUserInteraction();
-  if (journeyState.webComplete || journeyState.webQuestStarted) {
+  if (!canUseWebPuzzle() || !webFlowGame.active || journeyState.webQuestStarted) {
     return;
   }
+  markUserInteraction();
   journeyState.webQuestStarted = true;
   setNarration("universeQuest", { force: true });
   showMission("Поворачивай кусочки нитей, чтобы соединить нашу галактику с дальним узлом. Три уровня.");
   syncJourneyClasses();
 }
 
+function announceWebLevel(index, total) {
+  if (!canUseWebPuzzle() || !webFlowGame.active || !journeyState.webQuestStarted) {
+    return;
+  }
+  showMission(`Уровень ${index} из ${total} собран! Дальше — сложнее.`);
+}
+
 // Connected the thread on all three levels.
 function completeWebPath() {
-  if (journeyState.webComplete) {
+  if (
+    !canUseWebPuzzle()
+    || !journeyState.webQuestStarted
+    || webFlowGame.complete !== true
+  ) {
     return;
   }
   journeyState.webComplete = true;
@@ -1038,6 +1138,9 @@ function createPersonalStar(left, top) {
 }
 
 function openCoupon() {
+  if (!canUseFinale() || journeyState.finalStep < 3) {
+    return;
+  }
   couponModal.hidden = false;
 }
 
@@ -1047,7 +1150,7 @@ function closeCoupon() {
 
 // Places the user's star where they clicked (finale "choose a spot" mode).
 function placeStar(clientX, clientY) {
-  if (journeyState.finalStep !== 2) {
+  if (!canUseFinale() || journeyState.finalStep !== 2) {
     return;
   }
   journeyState.finalStep = 3;
@@ -1062,6 +1165,9 @@ function placeStar(clientX, clientY) {
 }
 
 function advanceFinale() {
+  if (!canUseFinale()) {
+    return;
+  }
   markUserInteraction();
 
   if (journeyState.finalStep === 0) {
@@ -1186,6 +1292,7 @@ let currentStageState = computeStageState({
   stageCount: stages.length,
   reducedMotion
 });
+syncGameControlAccess();
 
 function screenPositionFor(data) {
   const point = data.object3D
@@ -1381,6 +1488,7 @@ function updateStage() {
   });
   const { exactStage, transitionAmount } = currentStageState;
   activeStage = currentStageState.activeStage;
+  syncGameControlAccess();
   if (activeStage === STAGE_INDEX.earth) scheduleEarthShipReveal();
   const lower = Math.floor(exactStage);
   const upper = Math.min(stages.length - 1, lower + 1);
@@ -1485,6 +1593,14 @@ function updateStage() {
 }
 
 function openPanel(data, trigger) {
+  if (
+    !journeyStarted
+    || !data
+    || data.stage !== activeStage
+    || data.stage > stageAccess.highestUnlockedStage
+  ) {
+    return;
+  }
   markUserInteraction();
   activeObject = data;
   annotationPanel.open({
@@ -1500,6 +1616,7 @@ function startJourney() {
   journeyStarted = true;
   scrollJourneyTo(0);
   setNarration("homeStart", { play: journeyState.voiceEnabled, force: true });
+  syncGameControlAccess();
   updateMissionForStage();
 }
 
@@ -1606,7 +1723,7 @@ function animate(timestamp = performance.now()) {
     updateStage();
     rocketGame.update({
       delta,
-      active: activeStage === STAGE_INDEX.earth && !journeyState.rocketCaught && journeyState.earthShipReady
+      active: canCatchRocket()
     });
   } else {
     renderIntro(delta);
@@ -1804,9 +1921,10 @@ rocketCatcher.addEventListener("click", (event) => {
 }, { signal: listenerSignal });
 webRunner.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (!canUseWebPuzzle() || !webFlowGame.active) return;
   markUserInteraction();
+  if (!webFlowGame.reset()) return;
   startWebQuest();
-  webFlowGame.reset();
   showMission("Начинаем сначала. Поворачивай кусочки и собери нить.");
 }, { signal: listenerSignal });
 starMaker.addEventListener("click", (event) => {

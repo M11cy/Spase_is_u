@@ -6,6 +6,7 @@ import {
   getHighestUnlockedStage,
   scrollYForStage
 } from "./stage-access.js";
+import * as stageAccess from "./stage-access.js";
 
 const stages = Object.freeze([
   { id: "place" }, { id: "earth" }, { id: "solar-system" },
@@ -67,5 +68,83 @@ describe("stage access", () => {
       stages,
       journeyState: { rocketCaught: true, solarComplete: true, webComplete: true }
     })).toBe("");
+  });
+});
+
+describe("game access preconditions", () => {
+  const requiredArtifacts = new Set(["earth", "mars"]);
+  const completeArtifacts = new Set(["earth", "mars"]);
+
+  it("opens the engine only on the active Solar stage with every required artifact", () => {
+    const input = {
+      journeyStarted: true,
+      activeStage: 2,
+      solarStage: 2,
+      solarComplete: false,
+      artifactIds: completeArtifacts,
+      requiredArtifactIds: requiredArtifacts
+    };
+
+    expect(stageAccess.isEngineGameAvailable?.(input)).toBe(true);
+    expect(stageAccess.isEngineGameAvailable?.({ ...input, activeStage: 1 })).toBe(false);
+    expect(stageAccess.isEngineGameAvailable?.({
+      ...input,
+      artifactIds: new Set(["earth"])
+    })).toBe(false);
+    expect(stageAccess.isEngineGameAvailable?.({
+      ...input,
+      artifactIds: new Set(["earth", "mars", "forged"])
+    })).toBe(false);
+  });
+
+  it("opens the Web game only while its unlocked stage is active", () => {
+    const input = {
+      journeyStarted: true,
+      activeStage: 5,
+      webStage: 5,
+      highestUnlockedStage: 5,
+      solarComplete: true,
+      webComplete: false
+    };
+
+    expect(stageAccess.isWebGameAvailable?.(input)).toBe(true);
+    expect(stageAccess.isWebGameAvailable?.({ ...input, activeStage: 4 })).toBe(false);
+    expect(stageAccess.isWebGameAvailable?.({ ...input, highestUnlockedStage: 4 })).toBe(false);
+    expect(stageAccess.isWebGameAvailable?.({ ...input, solarComplete: "true" })).toBe(false);
+  });
+
+  it("requires the active Earth stage and legitimate ready state for rocket input", () => {
+    const input = {
+      journeyStarted: true,
+      activeStage: 1,
+      earthStage: 1,
+      earthShipReady: true,
+      rocketCaught: false
+    };
+
+    expect(stageAccess.isRocketGameAvailable?.(input)).toBe(true);
+    expect(stageAccess.isRocketGameAvailable?.({ ...input, activeStage: 0 })).toBe(false);
+    expect(stageAccess.isRocketGameAvailable?.({ ...input, earthShipReady: false })).toBe(false);
+    expect(stageAccess.isRocketGameAvailable?.({ ...input, journeyStarted: 1 })).toBe(false);
+  });
+
+  it("accepts quiz artifacts and finale input only on their legitimate active stages", () => {
+    const solarInput = {
+      journeyStarted: true,
+      activeStage: 2,
+      solarStage: 2,
+      solarComplete: false
+    };
+    const finaleInput = {
+      journeyStarted: true,
+      activeStage: 6,
+      finaleStage: 6,
+      webComplete: true
+    };
+
+    expect(stageAccess.isSolarCollectionAvailable?.(solarInput)).toBe(true);
+    expect(stageAccess.isSolarCollectionAvailable?.({ ...solarInput, activeStage: 1 })).toBe(false);
+    expect(stageAccess.isFinaleGameAvailable?.(finaleInput)).toBe(true);
+    expect(stageAccess.isFinaleGameAvailable?.({ ...finaleInput, webComplete: false })).toBe(false);
   });
 });

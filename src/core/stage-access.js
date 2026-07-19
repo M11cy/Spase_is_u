@@ -73,3 +73,80 @@ export const blockReasonForStage = ({ stages, journeyState }) => {
   if (id === "cosmic-web") return "Сначала соедини космическую нить на всех трёх уровнях.";
   return "";
 };
+
+const isActiveStage = (activeStage, expectedStage) => (
+  Number.isInteger(activeStage)
+  && Number.isInteger(expectedStage)
+  && activeStage === expectedStage
+);
+
+export const hasEveryRequiredArtifact = ({ artifactIds, requiredArtifactIds }) => {
+  if (!(artifactIds instanceof Set) || !(requiredArtifactIds instanceof Set)) return false;
+  if (requiredArtifactIds.size === 0 || artifactIds.size !== requiredArtifactIds.size) return false;
+  return [...requiredArtifactIds].every((id) => artifactIds.has(id));
+};
+
+export const isRocketGameAvailable = ({
+  journeyStarted,
+  activeStage,
+  earthStage,
+  earthShipReady,
+  rocketCaught
+} = {}) => (
+  journeyStarted === true
+  && isActiveStage(activeStage, earthStage)
+  && earthShipReady === true
+  && rocketCaught === false
+);
+
+export const isEngineGameAvailable = ({
+  journeyStarted,
+  activeStage,
+  solarStage,
+  solarComplete,
+  artifactIds,
+  requiredArtifactIds
+} = {}) => (
+  journeyStarted === true
+  && isActiveStage(activeStage, solarStage)
+  && solarComplete === false
+  && hasEveryRequiredArtifact({ artifactIds, requiredArtifactIds })
+);
+
+export const isWebGameAvailable = ({
+  journeyStarted,
+  activeStage,
+  webStage,
+  highestUnlockedStage,
+  solarComplete,
+  webComplete
+} = {}) => (
+  journeyStarted === true
+  && isActiveStage(activeStage, webStage)
+  && Number.isInteger(highestUnlockedStage)
+  && highestUnlockedStage >= webStage
+  && solarComplete === true
+  && webComplete === false
+);
+
+export const isSolarCollectionAvailable = ({
+  journeyStarted,
+  activeStage,
+  solarStage,
+  solarComplete
+} = {}) => (
+  journeyStarted === true
+  && isActiveStage(activeStage, solarStage)
+  && solarComplete === false
+);
+
+export const isFinaleGameAvailable = ({
+  journeyStarted,
+  activeStage,
+  finaleStage,
+  webComplete
+} = {}) => (
+  journeyStarted === true
+  && isActiveStage(activeStage, finaleStage)
+  && webComplete === true
+);

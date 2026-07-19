@@ -30,6 +30,7 @@ export function createRocketCatchGame({
   let caught = false;
   let misses = 0;
   let inZone = false;
+  zoneElement.disabled = true;
 
   const speed = () => baseSpeed * Math.max(1 - misses * 0.07, 0.6);
   const zoneScale = () => 1 + Math.min(misses * 0.14, 0.7);
@@ -52,6 +53,7 @@ export function createRocketCatchGame({
     const value = Boolean(next) && !caught;
     if (value === active) return;
     active = value;
+    zoneElement.disabled = !active;
     if (active) render();
     else zoneElement.classList.remove("armed");
   };
@@ -64,8 +66,9 @@ export function createRocketCatchGame({
   };
 
   const attemptCatch = () => {
-    if (caught || reducedMotion) return "caught";
-    if (active && inZone) return "caught";
+    if (caught) return "caught";
+    if (!active) return "inactive";
+    if (reducedMotion || inZone) return "caught";
     misses += 1;
     return "miss";
   };
@@ -79,6 +82,7 @@ export function createRocketCatchGame({
   const setCaught = () => {
     caught = true;
     active = false;
+    zoneElement.disabled = true;
     zoneElement.classList.remove("armed", "miss");
   };
 
@@ -87,6 +91,8 @@ export function createRocketCatchGame({
     misses = 0;
     inZone = false;
     t = initialT;
+    active = false;
+    zoneElement.disabled = true;
   };
 
   return Object.freeze({

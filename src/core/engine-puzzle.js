@@ -63,6 +63,7 @@ export function createEnginePuzzle({
   let order = Array.from({ length: count }, (_, index) => index);
   let selected = -1;
   let solved = false;
+  let active = false;
   const tiles = [];
 
   const positionFor = (piece) => {
@@ -83,11 +84,12 @@ export function createEnginePuzzle({
       tile.style.backgroundPosition = positionFor(piece);
       tile.classList.toggle("selected", position === selected);
       tile.classList.toggle("placed", piece === position);
+      tile.disabled = !active || solved;
     });
   };
 
   const onTileClick = (position) => {
-    if (solved) return;
+    if (!active || solved) return;
     if (selected === -1) {
       selected = position;
       render();
@@ -105,6 +107,7 @@ export function createEnginePuzzle({
 
     if (isSolved()) {
       solved = true;
+      render();
       setStatus("Двигатель собран!");
       onSolved?.();
       return;
@@ -134,6 +137,7 @@ export function createEnginePuzzle({
   };
 
   const shuffle = () => {
+    if (!active) return false;
     solved = false;
     selected = -1;
     do {
@@ -144,6 +148,15 @@ export function createEnginePuzzle({
     } while (isSolved());
     setStatus("");
     render();
+    return true;
+  };
+
+  const setActive = (next) => {
+    const nextActive = next === true && !solved;
+    if (nextActive === active) return active;
+    active = nextActive;
+    render();
+    return active;
   };
 
   build();
@@ -151,6 +164,8 @@ export function createEnginePuzzle({
   return Object.freeze({
     shuffle,
     render,
+    setActive,
+    get active() { return active; },
     get solved() { return solved; }
   });
 }

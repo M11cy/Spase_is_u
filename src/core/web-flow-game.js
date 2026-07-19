@@ -103,6 +103,8 @@ export function createWebFlowGame({ container, onStart, onLevel, onComplete } = 
   let started = false;
   let complete = false;
   let locked = false;
+  let active = false;
+  let completionTimer = null;
   const tiles = new Map();
 
   const render = () => {
@@ -112,6 +114,7 @@ export function createWebFlowGame({ container, onStart, onLevel, onComplete } = 
       const pipe = tile.querySelector(".web-flow__pipe");
       pipe.style.transform = `rotate(${cell.rotation * 90}deg)`;
       pipe.classList.toggle("lit", powered.has(tileKey));
+      tile.disabled = !active || complete || locked;
     });
   };
 
@@ -158,8 +161,29 @@ export function createWebFlowGame({ container, onStart, onLevel, onComplete } = 
     build();
   };
 
+  const settleSolvedLevel = () => {
+    if (!active || !locked || completionTimer != null) return;
+    completionTimer = window.setTimeout(() => {
+      completionTimer = null;
+      if (!active || !locked) return;
+      container.classList.remove("solved");
+      if (levelIndex < LEVELS.length - 1) {
+        levelIndex += 1;
+        loadLevel(levelIndex);
+        locked = false;
+        render();
+        onLevel?.(levelIndex, LEVELS.length);
+      } else {
+        complete = true;
+        active = false;
+        render();
+        onComplete?.();
+      }
+    }, 1000);
+  };
+
   function rotateTile(tileKey) {
-    if (complete || locked) return;
+    if (!active || complete || locked) return;
     if (!started) { started = true; onStart?.(); }
     const cell = level.cells.get(tileKey);
     cell.rotation = (cell.rotation + 1) % 4;
@@ -169,29 +193,42 @@ export function createWebFlowGame({ container, onStart, onLevel, onComplete } = 
 
     locked = true;
     container.classList.add("solved");
-    window.setTimeout(() => {
-      container.classList.remove("solved");
-      if (levelIndex < LEVELS.length - 1) {
-        levelIndex += 1;
-        loadLevel(levelIndex);
-        locked = false;
-        onLevel?.(levelIndex, LEVELS.length);
-      } else {
-        complete = true;
-        onComplete?.();
-      }
-    }, 1000);
+    render();
+    settleSolvedLevel();
   }
 
   loadLevel(0);
 
   const reset = () => {
+    if (!active) return false;
+    if (completionTimer != null) window.clearTimeout(completionTimer);
+    completionTimer = null;
+    container.classList.remove("solved");
     levelIndex = 0;
     complete = false;
     locked = false;
     started = false;
     loadLevel(0);
+    return true;
   };
 
-  return Object.freeze({ reset, get complete() { return complete; } });
+  const setActive = (next) => {
+    const shouldActivate = next === true && !complete;
+    if (shouldActivate === active) return active;
+    if (!shouldActivate && completionTimer != null) {
+      window.clearTimeout(completionTimer);
+      completionTimer = null;
+    }
+    active = shouldActivate;
+    render();
+    if (active && locked) settleSolvedLevel();
+    return active;
+  };
+
+  return Object.freeze({
+    reset,
+    setActive,
+    get active() { return active; },
+    get complete() { return complete; }
+  });
 }

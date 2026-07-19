@@ -65,6 +65,86 @@ const solveWebLevel = async (page, definition) => {
   await expect(flow).toHaveClass(/solved/);
 };
 
+const expectInactiveButton = async (locator) => {
+  await expect(locator).toBeHidden();
+  await expect(locator).toBeDisabled();
+  await expect(locator).toHaveAttribute("tabindex", "-1");
+  await expect(locator).toHaveAttribute("aria-hidden", "true");
+};
+
+test("inactive game controls stay unfocusable and cannot advance progression", async ({ page }) => {
+  await startJourney(page);
+  const navigation = page.getByRole("navigation", { name: "Масштабы" });
+  const earthButton = navigation.getByRole("button", { name: "Земля" });
+  const systemButton = navigation.getByRole("button", { name: /Система/ });
+  const galaxyButton = navigation.getByRole("button", { name: "Галактика" });
+  const unknownButton = navigation.locator('button[data-stage="6"]');
+  const rocket = page.locator("#rocketCatcher");
+  const engine = page.locator("#enginePuzzleOpen");
+  const webRunner = page.locator("#webRunner");
+  const webFlow = page.locator("#webFlow");
+
+  await expectInactiveButton(rocket);
+  await expectInactiveButton(engine);
+  await expectInactiveButton(webRunner);
+  await expect(webFlow).toBeHidden();
+  await expect(webFlow).toHaveAttribute("inert", "");
+  await expect(webFlow).toHaveAttribute("aria-hidden", "true");
+  await expect(webFlow.locator(".web-flow__tile").first()).toBeDisabled();
+
+  await page.locator("#locateButton").focus();
+  const tabStops = [];
+  for (let index = 0; index < 14; index += 1) {
+    await page.keyboard.press("Tab");
+    tabStops.push(await page.evaluate(() => document.activeElement?.id ?? ""));
+  }
+  expect(tabStops).not.toContain("rocketCatcher");
+  expect(tabStops).not.toContain("enginePuzzleOpen");
+  expect(tabStops).not.toContain("webRunner");
+
+  await page.evaluate(() => {
+    document.querySelector("#rocketCatcher")?.click();
+    document.querySelector("#enginePuzzleOpen")?.click();
+    document.querySelector("#webRunner")?.click();
+    document.querySelector("#webFlow .web-flow__tile")?.click();
+  });
+  await expect(systemButton).toBeDisabled();
+  await expect(unknownButton).toBeDisabled();
+  await expectStage(page, 0);
+
+  await earthButton.click();
+  await expectStage(page, 1);
+  await expect(page.locator("body")).toHaveClass(/earth-ship-ready/, { timeout: 8_000 });
+  await expect(rocket).toBeVisible();
+  await expect(rocket).toBeEnabled();
+  await expect(rocket).not.toHaveAttribute("tabindex", "-1");
+  await expectInactiveButton(engine);
+  await expectInactiveButton(webRunner);
+
+  await rocket.click();
+  await page.waitForFunction(() => {
+    const zone = document.querySelector("#rocketCatcher");
+    if (!zone?.classList.contains("armed")) return false;
+    zone.click();
+    return true;
+  }, undefined, { timeout: 4_000 });
+  await expect(systemButton).toBeEnabled();
+  await expect(rocket).toBeHidden();
+  await expect(rocket).toBeDisabled();
+
+  await systemButton.click();
+  await expectStage(page, 2);
+  await page.evaluate(() => {
+    document.querySelector("#enginePuzzleOpen")?.click();
+    const tiles = document.querySelectorAll("#enginePuzzleBoard .engine-puzzle__tile");
+    tiles[0]?.click();
+    tiles[1]?.click();
+  });
+  await expect(page.locator("#enginePuzzle")).toBeHidden();
+  await expect(galaxyButton).toBeDisabled();
+  await expect(unknownButton).toBeDisabled();
+});
+
 test("future stages stay locked across scroll inputs while backward travel stays available", async ({ page }) => {
   await startJourney(page);
   const navigation = page.getByRole("navigation", { name: "Масштабы" });
@@ -257,6 +337,10 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await expect(webButton).toBeEnabled();
   await expect(unknownButton).toBeDisabled();
   await expect(unknownButton).toHaveAttribute("aria-label", /космическую нить/);
+  await expectInactiveButton(engineButton);
+  await expectInactiveButton(page.locator("#webRunner"));
+  await expect(page.locator("#webFlow")).toBeHidden();
+  await expect(page.locator("#webFlow")).toHaveAttribute("inert", "");
 
   await galaxyButton.click();
   await expectStage(page, 3);
@@ -266,6 +350,10 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await page.screenshot({ path: ".superpowers/sdd/task-7-artifacts/local-group.png" });
   await webButton.click();
   await expectStage(page, 5);
+  await expect(page.locator("#webRunner")).toBeVisible();
+  await expect(page.locator("#webRunner")).toBeEnabled();
+  await expect(page.locator("#webFlow")).toBeVisible();
+  await expect(page.locator("#webFlow .web-flow__tile").first()).toBeEnabled();
 
   for (let index = 0; index < webLevels.length; index += 1) {
     await solveWebLevel(page, webLevels[index]);
@@ -278,6 +366,9 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   }
 
   await expect(unknownButton).toBeEnabled({ timeout: 3_000 });
+  await expectInactiveButton(page.locator("#webRunner"));
+  await expect(page.locator("#webFlow")).toBeHidden();
+  await expect(page.locator("#webFlow .web-flow__tile").first()).toBeDisabled();
   await expect.poll(() => page.locator("#webFlow").evaluate(
     (element) => getComputedStyle(element).opacity
   )).toBe("0");

@@ -207,3 +207,30 @@ status: in-progress
 
 > [!note] Визуальные доказательства
 > Скриншоты сохранены рядом с task report: `task-7-artifacts/galaxy.png`, `local-group.png`, `cosmic-web.png`, `cosmic-web-mobile.png`, `mobile-locked-route.png`.
+
+### Hardening после внешнего review
+
+> [!success] Скрытое больше не интерактивно
+> Rocket, engine, Web и finale controls теперь закрываются не только CSS: неактивные кнопки получают `hidden`, `disabled`, `tabindex="-1"`, `aria-hidden="true"`; контейнер Web дополнительно получает `inert`. Доступность восстанавливается только на законном активном этапе.
+
+- Core-игры получили собственный fail-closed `active` lifecycle. Synthetic `dispatchEvent` не вращает Web tiles и не меняет engine puzzle, пока игра не активирована.
+- Reduced-motion больше не превращает неактивную ракету в победу: `attemptCatch()` возвращает `inactive`, пока Earth-game не активна.
+- Сбор артефакта требует активной Солнечной системы, совпадающего `activeObject`, состояния quiz `solved` и известного ID.
+- Engine открывается только на активной Солнечной системе при точном полном наборе quiz-артефактов; completion дополнительно требует открытый, запущенный и реально решённый puzzle.
+- Web start, level и completion требуют активную разблокированную Космическую сеть и активный core-state. Solved timer при уходе с этапа приостанавливается; reset очищает timer и stale `.solved` presentation.
+- Finale callbacks также требуют активный неизвестный этап после настоящей победы Web.
+
+#### RED → GREEN evidence
+
+- Первый focused unit RED: `7 failed / 18 passed` — controls были видимы для DOM/focus, reduced-motion rocket возвращал `caught`, engine/Web tiles были enabled, fail-closed predicates отсутствовали.
+- Focus/lifecycle E2E RED: после `earth-ship-ready` legitimate rocket оставалась `hidden`; единый lifecycle-sync восстановил её только на Earth.
+- Review regression RED: Web reset ожидал отсутствие `.solved`, но получил `true`; очистка presentation в `reset()` дала GREEN `3/3`.
+- Focused hardening suite: `28/28`; code re-review — Ready, security/abuse re-review — Approved без findings.
+
+#### Повторная проверка
+
+- Unit/DOM: `135/135` (`10/10` файлов).
+- Coverage: `90.58%` statements, `82.31%` branches, `90.04%` functions, `92.51%` lines; `create-shell.js` — `100% / 95.83% / 100% / 100%`.
+- Build: Vite exit `0`; только прежнее предупреждение о chunk больше `500 kB`.
+- E2E: `5/5` за `1.7m`, включая новый observable focus/keyboard/anti-progress сценарий и полный честный путь.
+- Security: `npm audit --audit-level=high` — `0` vulnerabilities.

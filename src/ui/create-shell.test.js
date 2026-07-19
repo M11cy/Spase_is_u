@@ -100,6 +100,48 @@ describe("createShell stage access", () => {
     expect(shell.stageButtons[0].textContent).toBe("Новый масштаб");
     shell.dispose();
   });
+
+  it("keeps inactive game controls hidden, disabled, and outside the tab order", () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const shell = createShell({ root: document.querySelector("#app"), stages });
+    const buttons = [
+      shell.rocketCatcher,
+      shell.enginePuzzleOpen,
+      shell.webRunner,
+      shell.starMaker
+    ];
+
+    buttons.forEach((button) => {
+      expect(button.hidden).toBe(true);
+      expect(button.disabled).toBe(true);
+      expect(button.tabIndex).toBe(-1);
+      expect(button.getAttribute("aria-hidden")).toBe("true");
+    });
+    expect(shell.rocketShip.hidden).toBe(true);
+    expect(shell.webFlow.hidden).toBe(true);
+    expect(shell.webFlow.hasAttribute("inert")).toBe(true);
+    expect(shell.webFlow.getAttribute("aria-hidden")).toBe("true");
+
+    shell.setGameControlAccess({
+      rocketActive: true,
+      engineActive: true,
+      webActive: true,
+      finaleActive: true
+    });
+
+    buttons.forEach((button) => {
+      expect(button.hidden).toBe(false);
+      expect(button.disabled).toBe(false);
+      expect(button.hasAttribute("tabindex")).toBe(false);
+      expect(button.hasAttribute("aria-hidden")).toBe(false);
+    });
+    expect(shell.rocketShip.hidden).toBe(false);
+    expect(shell.webFlow.hidden).toBe(false);
+    expect(shell.webFlow.hasAttribute("inert")).toBe(false);
+    expect(shell.webFlow.hasAttribute("aria-hidden")).toBe(false);
+
+    shell.dispose();
+  });
 });
 
 describe("setLabelAccessibility", () => {
