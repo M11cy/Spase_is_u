@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
+import { createQualityProfile } from "../../core/quality-profile.js";
+import { STAGES } from "../../data/cosmos.js";
+import { BLOOM_SCENE_LAYER } from "../deep-space-postprocessing.js";
 import { createCosmicWebLayer } from "./cosmic-web.js";
 import { createLocalGroupLayer } from "./local-group.js";
 import { createMilkyWayLayer } from "./milky-way.js";
@@ -15,11 +18,60 @@ const createLayer = (overrides = {}) => createMilkyWayLayer({
 });
 
 describe("createMilkyWayLayer", () => {
+  it("presents a large four-arm disc toward the camera", () => {
+    const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
+
+    expect(layer.root.userData.composition).toEqual(expect.objectContaining({
+      inclinationDegrees: 20,
+      diameter: 210,
+      armCount: 4,
+      dustLanes: 2
+    }));
+    expect(Object.isFrozen(layer.root.userData.composition)).toBe(true);
+    expect(layer.root.rotation.x).toBeCloseTo(-Math.PI / 2 + Math.PI / 9, 4);
+    expect(layer.root.rotation.z).toBeCloseTo(-0.16, 4);
+    expect(layer.root.scale.x).toBeGreaterThanOrEqual(1.5);
+
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", { width: 1920, height: 1080, dpr: 2, cores: 12 }, 9000],
+    ["medium", { width: 1024, height: 768, dpr: 2, cores: 8 }, 5600],
+    ["economy", { width: 390, height: 844, dpr: 3, cores: 12 }, 2800]
+  ])("uses the exact %s Milky Way point budget", (tier, viewport, galaxyPoints) => {
+    const profile = createQualityProfile({ ...viewport, reducedMotion: false });
+    const layer = createLayer({ quality: profile });
+
+    expect(profile).toMatchObject({ tier, galaxyPoints });
+    expect(layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").count)
+      .toBe(galaxyPoints);
+
+    layer.dispose();
+  });
+
+  it("fills roughly seventy percent of the settled desktop frame", () => {
+    const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
+    const stage = STAGES.find(({ id }) => id === "milky-way");
+    const distance = Math.hypot(...stage.camera.position.map((value, index) => (
+      value - stage.camera.target[index]
+    )));
+    const verticalFov = stage.camera.fov * Math.PI / 180;
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * (16 / 9));
+    const viewportWidth = 2 * distance * Math.tan(horizontalFov / 2);
+    const occupancy = layer.root.userData.composition.diameter * layer.root.scale.x / viewportWidth;
+
+    expect(occupancy).toBeGreaterThanOrEqual(0.66);
+    expect(occupancy).toBeLessThanOrEqual(0.75);
+
+    layer.dispose();
+  });
+
   it("creates a layered volumetric galaxy using the quality point count", () => {
     const layer = createLayer({ quality: { tier: "economy", galaxyPoints: 900 } });
 
     expect(layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").count).toBe(900);
-    expect(layer.root.getObjectByName("milky-way-dust")).toBeTruthy();
+    expect(layer.root.getObjectByName("milky-way-dust-lane-1")).toBeTruthy();
     expect(layer.root.getObjectByName("milky-way-halo")).toBeTruthy();
     expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
 
@@ -28,8 +80,12 @@ describe("createMilkyWayLayer", () => {
 
   it("uses the shared high-quality parallax response", () => {
     const layer = createLayer();
+    const initialZ = layer.root.position.z;
+    const initialRotation = layer.root.rotation.clone();
 
     expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    expect(layer.root.position.z).toBe(initialZ);
+    expect(layer.root.rotation.toArray()).toEqual(initialRotation.toArray());
 
     layer.dispose();
   });
@@ -37,7 +93,7 @@ describe("createMilkyWayLayer", () => {
   it("keeps stars, dust, core, and halo as independently faded transparent 3D layers", () => {
     const layer = createLayer();
     const stars = layer.root.getObjectByName("milky-way-stars");
-    const dust = layer.root.getObjectByName("milky-way-dust");
+    const dust = layer.root.getObjectByName("milky-way-dust-lane-1");
     const core = layer.root.getObjectByName("milky-way-core");
     const halo = layer.root.getObjectByName("milky-way-halo");
 
@@ -52,7 +108,7 @@ describe("createMilkyWayLayer", () => {
     layer.dispose();
   });
 
-  it("generates deterministic logarithmic-arm positions and creates annotation markers", () => {
+  it("generates deterministic logarithmic-arm positions and keeps annotations outside the bright core", () => {
     const annotation = {
       id: "galactic-center",
       stage: 3,
@@ -65,23 +121,25 @@ describe("createMilkyWayLayer", () => {
       .toEqual(second.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array);
     expect(first.interactive).toHaveLength(1);
     expect(first.interactive[0].userData.annotation).toMatchObject(annotation);
+    expect(Math.hypot(first.interactive[0].position.x, first.interactive[0].position.y))
+      .toBeGreaterThanOrEqual(28);
 
     first.dispose();
     second.dispose();
   });
 
-  it("forms four separated logarithmic arm bands with outward radial progression", () => {
+  it("forms four separated face-on logarithmic arm bands with outward radial progression", () => {
     const layer = createLayer();
     const positions = layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array;
-    const { armCount, discDepthScale, pattern } = layer.root.userData.armStructure;
+    const { armCount, coordinatePlane, pattern } = layer.root.userData.armStructure;
     const pointCount = positions.length / 3;
     const radialDistance = (index) => {
       const offset = index * 3;
-      return Math.hypot(positions[offset], positions[offset + 2] / discDepthScale);
+      return Math.hypot(positions[offset], positions[offset + 1]);
     };
     const firstAngles = Array.from({ length: armCount }, (_, arm) => {
       const offset = arm * 3;
-      return Math.atan2(positions[offset + 2] / discDepthScale, positions[offset]);
+      return Math.atan2(positions[offset + 1], positions[offset]);
     }).sort((left, right) => left - right);
     const angularGaps = firstAngles.map((angle, index) => (
       (firstAngles[(index + 1) % armCount] - angle + Math.PI * 2) % (Math.PI * 2)
@@ -89,11 +147,57 @@ describe("createMilkyWayLayer", () => {
 
     expect(Object.isFrozen(layer.root.userData.armStructure)).toBe(true);
     expect(pattern).toBe("logarithmic");
+    expect(coordinatePlane).toBe("xy");
     expect(armCount).toBe(4);
     expect(angularGaps.every((gap) => gap > 1 && gap < 2.1)).toBe(true);
     expect(Array.from({ length: armCount }, (_, arm) => (
       radialDistance(pointCount - armCount + arm) > radialDistance(arm) * 8
     )).every(Boolean)).toBe(true);
+
+    layer.dispose();
+  });
+
+  it("breaks luminous arms with two dark offset dust lanes and a volumetric halo", () => {
+    const layer = createLayer();
+    const dustLanes = [1, 2].map((index) => (
+      layer.root.getObjectByName(`milky-way-dust-lane-${index}`)
+    ));
+    const stars = layer.root.getObjectByName("milky-way-stars");
+    const halo = layer.root.getObjectByName("milky-way-halo");
+    const haloPositions = halo.geometry.getAttribute("position");
+    const distinctHaloDepths = new Set(Array.from(haloPositions.array)
+      .filter((_, index) => index % 3 === 2)
+      .map((value) => Math.round(value)));
+
+    expect(dustLanes.every(Boolean)).toBe(true);
+    expect(dustLanes.every(({ material, renderOrder }) => (
+      material.blending === THREE.NormalBlending
+      && material.transparent
+      && material.opacity >= 0.7
+      && renderOrder > stars.renderOrder
+    ))).toBe(true);
+    expect(dustLanes[0].geometry.getAttribute("position").array)
+      .not.toEqual(dustLanes[1].geometry.getAttribute("position").array);
+    expect(halo.isPoints).toBe(true);
+    expect(distinctHaloDepths.size).toBeGreaterThan(12);
+
+    layer.dispose();
+  });
+
+  it("selectively blooms luminous stars and the warm core while preserving the base layer", () => {
+    const layer = createLayer();
+    const stars = layer.root.getObjectByName("milky-way-stars");
+    const core = layer.root.getObjectByName("milky-way-core");
+    const halo = layer.root.getObjectByName("milky-way-halo");
+    const dust = layer.root.getObjectByName("milky-way-dust-lane-1");
+
+    expect(core.material.color.getHex()).toBe(0xffc878);
+    expect([stars, core].every(({ layers }) => (
+      layers.isEnabled(0) && layers.isEnabled(BLOOM_SCENE_LAYER)
+    ))).toBe(true);
+    expect([halo, dust].every(({ layers }) => (
+      layers.isEnabled(0) && !layers.isEnabled(BLOOM_SCENE_LAYER)
+    ))).toBe(true);
 
     layer.dispose();
   });

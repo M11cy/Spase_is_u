@@ -1,3 +1,4 @@
+import { enableDeepSpaceBloom } from "../deep-space-postprocessing.js";
 import {
   clampPresence,
   createSeededRandom,
@@ -7,9 +8,15 @@ import {
 
 const GALAXY_SEED = 19770314;
 const ARM_COUNT = 4;
+const DUST_LANE_COUNT = 2;
 const ROOT_DEPTH = -80;
+const DISC_DIAMETER = 210;
+const DISC_RADIUS = DISC_DIAMETER / 2;
+const INNER_ARM_RADIUS = 7.2;
+const INCLINATION = Math.PI / 9;
+const ROOT_SCALE = 1.62;
+const PROTECTED_CORE_RADIUS = 28;
 const MIN_GALAXY_POINTS = 1;
-const DISC_DEPTH_SCALE = 0.36;
 
 const isPositiveInteger = (value) => Number.isInteger(value) && value >= MIN_GALAXY_POINTS;
 
@@ -32,18 +39,29 @@ const setAttribute = (THREE, geometry, name, values) => {
   geometry.setAttribute(name, new THREE.Float32BufferAttribute(values, 3));
 };
 
-const createArmPoint = (random, index, count, offset = 0) => {
+const createSpiralPoint = ({ random, index, count, angleOffset = 0, widthScale = 1 }) => {
   const arm = index % ARM_COUNT;
-  const progression = (index + random() * 0.7) / count;
-  const radius = 10 * Math.exp(progression * 2.9);
-  const angle = arm * (Math.PI * 2 / ARM_COUNT) + progression * 7.2 + (random() - 0.5) * 0.24;
-  const armSpread = (random() - 0.5) * (3.5 + radius * 0.11);
-  const thickness = (random() - 0.5) * (1.5 + radius * 0.035);
+  const pointsPerArm = Math.ceil(count / ARM_COUNT);
+  const pointInArm = Math.floor(index / ARM_COUNT);
+  const progression = Math.min(1, (pointInArm + random() * 0.42) / Math.max(1, pointsPerArm - 0.58));
+  const logarithmicGrowth = Math.log(DISC_RADIUS / INNER_ARM_RADIUS);
+  const radius = INNER_ARM_RADIUS * Math.exp(progression * logarithmicGrowth);
+  const clump = (Math.sin(progression * Math.PI * 18 + arm * 1.7) + 1) / 2;
+  const angle = arm * (Math.PI * 2 / ARM_COUNT)
+    + progression * 6.35
+    + angleOffset
+    + (random() - 0.5) * 0.11;
+  const radialSpread = (random() - 0.5) * (0.9 + radius * 0.026) * widthScale;
+  const armSpread = (random() - 0.5) * (1.35 + radius * 0.068) * widthScale * (0.62 + clump * 0.38);
+  const resolvedRadius = radius + radialSpread;
+  const tangent = angle + Math.PI / 2;
 
   return Object.freeze({
-    x: Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * armSpread,
-    y: thickness + offset,
-    z: Math.sin(angle) * radius * DISC_DEPTH_SCALE + Math.sin(angle + Math.PI / 2) * armSpread * 0.35
+    x: Math.cos(angle) * resolvedRadius + Math.cos(tangent) * armSpread,
+    y: Math.sin(angle) * resolvedRadius + Math.sin(tangent) * armSpread,
+    z: (random() - 0.5) * (1.15 + radius * 0.028),
+    clump,
+    progression
   });
 };
 
@@ -51,17 +69,19 @@ const createStarField = (THREE, glowTexture, count) => {
   const random = createSeededRandom(GALAXY_SEED);
   const positions = [];
   const colors = [];
-  const palette = [
+  const warm = new THREE.Color(0xffd39a);
+  const coolPalette = [
     new THREE.Color(0xeef6ff),
     new THREE.Color(0xb9d3ff),
-    new THREE.Color(0xffdfbd),
+    new THREE.Color(0xffe1c2),
     new THREE.Color(0xa8b8ff)
   ];
 
   for (let index = 0; index < count; index += 1) {
-    const point = createArmPoint(random, index, count);
-    const color = palette[index % palette.length];
-    const brightness = 0.55 + random() * 0.45;
+    const point = createSpiralPoint({ random, index, count });
+    const outerColor = coolPalette[index % coolPalette.length];
+    const color = warm.clone().lerp(outerColor, Math.min(1, point.progression * 1.35));
+    const brightness = (0.56 + random() * 0.44) * (0.72 + point.clump * 0.28);
     positions.push(point.x, point.y, point.z);
     colors.push(color.r * brightness, color.g * brightness, color.b * brightness);
   }
@@ -71,7 +91,7 @@ const createStarField = (THREE, glowTexture, count) => {
   setAttribute(THREE, geometry, "color", colors);
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 1.45,
+    size: 1.38,
     transparent: true,
     opacity: 0.82,
     alphaTest: 0.01,
@@ -79,22 +99,30 @@ const createStarField = (THREE, glowTexture, count) => {
     vertexColors: true,
     blending: THREE.AdditiveBlending
   });
-  const stars = new THREE.Points(geometry, material);
+  const stars = enableDeepSpaceBloom(new THREE.Points(geometry, material));
   stars.name = "milky-way-stars";
   stars.renderOrder = 5;
   return stars;
 };
 
-const createDustField = (THREE, glowTexture, count) => {
-  const random = createSeededRandom(GALAXY_SEED + 1);
+const createDustLane = (THREE, glowTexture, count, laneIndex) => {
+  const random = createSeededRandom(GALAXY_SEED + 101 + laneIndex);
   const positions = [];
   const colors = [];
+  const angleOffset = laneIndex === 0 ? -0.105 : 0.115;
 
   for (let index = 0; index < count; index += 1) {
-    const point = createArmPoint(random, index, count, (random() - 0.5) * 1.5);
-    positions.push(point.x * 1.025, point.y * 1.8, point.z * 1.025);
-    const opacityTone = 0.045 + random() * 0.11;
-    colors.push(opacityTone * 0.46, opacityTone * 0.56, opacityTone);
+    const point = createSpiralPoint({
+      random,
+      index,
+      count,
+      angleOffset,
+      widthScale: 0.48
+    });
+    const foregroundOffset = 0.7 + laneIndex * 0.38;
+    const darkness = 0.018 + random() * 0.026;
+    positions.push(point.x, point.y, point.z + foregroundOffset);
+    colors.push(darkness * 0.38, darkness * 0.48, darkness * 0.72);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -102,17 +130,19 @@ const createDustField = (THREE, glowTexture, count) => {
   setAttribute(THREE, geometry, "color", colors);
   const material = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 4.4,
+    size: laneIndex === 0 ? 6.2 : 5.4,
     transparent: true,
-    opacity: 0.55,
+    opacity: laneIndex === 0 ? 0.82 : 0.74,
     alphaTest: 0.01,
+    depthTest: true,
     depthWrite: false,
     vertexColors: true,
     blending: THREE.NormalBlending
   });
   const dust = new THREE.Points(geometry, material);
-  dust.name = "milky-way-dust";
-  dust.renderOrder = 3;
+  dust.name = `milky-way-dust-lane-${laneIndex + 1}`;
+  dust.userData.occludesArms = true;
+  dust.renderOrder = 6;
   return dust;
 };
 
@@ -121,30 +151,54 @@ const createCore = (THREE, glowTexture) => {
     map: glowTexture,
     color: 0xffc878,
     transparent: true,
-    opacity: 0.94,
+    opacity: 0.97,
     depthWrite: false,
     blending: THREE.AdditiveBlending
   });
-  const core = new THREE.Sprite(material);
+  const core = enableDeepSpaceBloom(new THREE.Sprite(material));
   core.name = "milky-way-core";
-  core.scale.set(28, 28, 1);
-  core.renderOrder = 6;
+  core.scale.set(31, 31, 1);
+  core.renderOrder = 8;
   return core;
 };
 
-const createHalo = (THREE) => {
-  const geometry = new THREE.SphereGeometry(115, 24, 16);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x789cff,
+const createHalo = (THREE, glowTexture, count) => {
+  const random = createSeededRandom(GALAXY_SEED + 303);
+  const positions = [];
+  const colors = [];
+  const cool = new THREE.Color(0x88aaff);
+  const warm = new THREE.Color(0xffd7a4);
+
+  for (let index = 0; index < count; index += 1) {
+    const radius = 32 + Math.pow(random(), 0.58) * 86;
+    const polar = random() * 2 - 1;
+    const planarRadius = Math.sqrt(1 - polar * polar) * radius;
+    const angle = random() * Math.PI * 2;
+    const color = cool.clone().lerp(warm, random() * 0.3);
+    const brightness = 0.34 + random() * 0.44;
+    positions.push(
+      Math.cos(angle) * planarRadius,
+      Math.sin(angle) * planarRadius,
+      polar * radius * 0.48
+    );
+    colors.push(color.r * brightness, color.g * brightness, color.b * brightness);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  setAttribute(THREE, geometry, "position", positions);
+  setAttribute(THREE, geometry, "color", colors);
+  const material = new THREE.PointsMaterial({
+    map: glowTexture,
+    size: 2.15,
     transparent: true,
-    opacity: 0.055,
+    opacity: 0.28,
+    alphaTest: 0.01,
     depthWrite: false,
-    side: THREE.BackSide,
-    blending: THREE.NormalBlending
+    vertexColors: true,
+    blending: THREE.AdditiveBlending
   });
-  const halo = new THREE.Mesh(geometry, material);
+  const halo = new THREE.Points(geometry, material);
   halo.name = "milky-way-halo";
-  halo.scale.set(1, 0.52, 0.74);
   halo.renderOrder = 1;
   return halo;
 };
@@ -153,6 +207,17 @@ const isPosition = (position) => Array.isArray(position)
   && position.length === 3
   && position.every((value) => typeof value === "number" && Number.isFinite(value));
 
+const projectAnnotationPosition = ([sourceX, sourceY, sourceZ]) => {
+  const sourceRadius = Math.hypot(sourceX, sourceY);
+  const markerRadius = Math.max(PROTECTED_CORE_RADIUS + 2, sourceRadius);
+  const angle = sourceRadius > 0 ? Math.atan2(sourceY, sourceX) : -Math.PI / 3;
+  return Object.freeze({
+    x: Math.cos(angle) * markerRadius,
+    y: Math.sin(angle) * markerRadius,
+    z: Math.max(-14, Math.min(14, sourceZ - ROOT_DEPTH))
+  });
+};
+
 const createAnnotationMarkers = ({ annotations, createMarker, root }) => annotations.flatMap((source) => {
   if (!source || typeof source !== "object" || !isPosition(source.position)) return [];
 
@@ -160,12 +225,13 @@ const createAnnotationMarkers = ({ annotations, createMarker, root }) => annotat
   if (!marker || typeof marker !== "object" || !marker.position || typeof marker.position.set !== "function") {
     return [];
   }
-  marker.position.set(source.position[0], source.position[1], source.position[2] - ROOT_DEPTH);
+  const position = projectAnnotationPosition(source.position);
+  marker.position.set(position.x, position.y, position.z);
   marker.userData.baseOpacity = marker.material?.opacity ?? 1;
   const annotation = Object.freeze({ ...source, object3D: marker });
   marker.userData.annotation = annotation;
   marker.userData.stage = annotation.stage;
-  marker.renderOrder = 7;
+  marker.renderOrder = 9;
   root.add(marker);
   return [marker];
 });
@@ -184,22 +250,33 @@ export const createMilkyWayLayer = (input) => {
   const root = new THREE.Group();
   root.name = "milky-way-layer";
   root.position.set(0, 0, ROOT_DEPTH);
+  root.rotation.set(-Math.PI / 2 + INCLINATION, 0, -0.16);
+  root.scale.setScalar(ROOT_SCALE);
   root.visible = false;
+  root.userData.composition = Object.freeze({
+    inclinationDegrees: 20,
+    diameter: DISC_DIAMETER,
+    armCount: ARM_COUNT,
+    dustLanes: DUST_LANE_COUNT
+  });
   root.userData.armStructure = Object.freeze({
     armCount: ARM_COUNT,
-    discDepthScale: DISC_DEPTH_SCALE,
+    coordinatePlane: "xy",
     pattern: "logarithmic",
     seed: GALAXY_SEED
   });
 
   const stars = createStarField(THREE, glowTexture, quality.galaxyPoints);
-  const dust = createDustField(THREE, glowTexture, Math.max(64, Math.round(quality.galaxyPoints * 0.58)));
+  const dustCount = Math.max(64, Math.round(quality.galaxyPoints * 0.16));
+  const dustLanes = Array.from({ length: DUST_LANE_COUNT }, (_, laneIndex) => (
+    createDustLane(THREE, glowTexture, dustCount, laneIndex)
+  ));
   const core = createCore(THREE, glowTexture);
-  const halo = createHalo(THREE);
-  root.add(halo, dust, stars, core);
+  const halo = createHalo(THREE, glowTexture, Math.max(96, Math.round(quality.galaxyPoints * 0.05)));
+  root.add(halo, stars, ...dustLanes, core);
 
   const interactive = createAnnotationMarkers({ annotations, createMarker, root });
-  const fadedObjects = [stars, dust, core, halo, ...interactive];
+  const fadedObjects = [stars, ...dustLanes, core, halo, ...interactive];
   fadedObjects.forEach((object) => {
     object.userData.baseOpacity = object.userData.baseOpacity ?? object.material?.opacity ?? 1;
   });
