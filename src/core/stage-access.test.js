@@ -22,6 +22,14 @@ describe("stage access", () => {
     expect(getHighestUnlockedStage({ stages, journeyState })).toBe(expected);
   });
 
+  it("fails closed for absent or non-boolean journey progress", () => {
+    expect(getHighestUnlockedStage({ stages, journeyState: null })).toBe(1);
+    expect(getHighestUnlockedStage({
+      stages,
+      journeyState: { rocketCaught: "true", solarComplete: "true", webComplete: "true" }
+    })).toBe(1);
+  });
+
   it("allows backward travel but clamps forward travel", () => {
     expect(clampStageTarget({ requestedStage: 0, highestUnlockedStage: 2 })).toBe(0);
     expect(clampStageTarget({ requestedStage: 6, highestUnlockedStage: 2 })).toBe(2);

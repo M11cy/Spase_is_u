@@ -43,9 +43,10 @@ export const createStageIndex = (stages) => {
 
 export const getHighestUnlockedStage = ({ stages, journeyState }) => {
   const index = createStageIndex(stages);
-  if (!journeyState.rocketCaught) return index.earth;
-  if (!journeyState.solarComplete) return index["solar-system"];
-  if (!journeyState.webComplete) return index["cosmic-web"];
+  const progress = journeyState && typeof journeyState === "object" ? journeyState : {};
+  if (progress.rocketCaught !== true) return index.earth;
+  if (progress.solarComplete !== true) return index["solar-system"];
+  if (progress.webComplete !== true) return index["cosmic-web"];
   return stages.length - 1;
 };
 
