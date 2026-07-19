@@ -22,9 +22,16 @@ const copyVector = (values, label) => {
   return Object.freeze(vector);
 };
 
-const requireStageIndex = (stage, label) => {
-  if (!Number.isInteger(stage) || stage < 0) {
-    throw new TypeError(`${label} must be a non-negative integer`);
+const requireStageCount = (stageCount) => {
+  if (!Number.isInteger(stageCount) || stageCount <= 0) {
+    throw new TypeError("Earth experience stageCount must be a positive integer");
+  }
+  return stageCount;
+};
+
+const requireStageIndex = (stage, stageCount, label) => {
+  if (!Number.isInteger(stage) || stage < 0 || stage >= stageCount) {
+    throw new TypeError(`${label} must be a valid route index`);
   }
   return stage;
 };
@@ -82,6 +89,7 @@ export const createEarthExperienceController = ({
   earthPosition,
   radius,
   earthStage,
+  stageCount,
   initialLocation = FALLBACK_LOCATION
 }) => {
   if (!map?.setLocation || !map?.setJourneyProgress || !map?.dispose) {
@@ -90,7 +98,8 @@ export const createEarthExperienceController = ({
   if (!earthLayer?.setFocus) {
     throw new TypeError("An Earth layer with setFocus is required");
   }
-  const fixedEarthStage = requireStageIndex(earthStage, "Earth stage");
+  const fixedStageCount = requireStageCount(stageCount);
+  const fixedEarthStage = requireStageIndex(earthStage, fixedStageCount, "Earth stage");
 
   const fixedEarthPosition = copyVector(earthPosition, "Earth position");
   const fixedOrbitPose = Object.freeze({

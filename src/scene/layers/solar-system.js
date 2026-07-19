@@ -9,9 +9,16 @@ const textureEntryFor = (textures, planet) => (
 
 const textureFrom = (entry) => entry?.texture ?? (entry?.isTexture ? entry : null);
 
-const requireStageIndex = (stage) => {
-  if (!Number.isInteger(stage) || stage < 0) {
-    throw new TypeError("Solar system stage must be a non-negative integer");
+const requireStageCount = (stageCount) => {
+  if (!Number.isInteger(stageCount) || stageCount <= 0) {
+    throw new TypeError("Solar system stageCount must be a positive integer");
+  }
+  return stageCount;
+};
+
+const requireStageIndex = (stage, stageCount) => {
+  if (!Number.isInteger(stage) || stage < 0 || stage >= stageCount) {
+    throw new TypeError("Solar system stage must be a valid route index");
   }
   return stage;
 };
@@ -31,12 +38,14 @@ const createPlanetAnnotation = (planet, mesh, stage) => Object.freeze({
 export const createSolarSystemLayer = ({
   THREE,
   stage,
+  stageCount,
   planets,
   textures = new Map(),
   quality = {},
   composition = {}
 }) => {
-  const fixedStage = requireStageIndex(stage);
+  const fixedStageCount = requireStageCount(stageCount);
+  const fixedStage = requireStageIndex(stage, fixedStageCount);
   const root = new THREE.Group();
   const compactComposition = composition.compact
     ?? quality.compactNearSpace

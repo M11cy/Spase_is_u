@@ -15,6 +15,8 @@ const createController = (overrides = {}) => createEarthExperienceController({
   },
   earthPosition: [0, 0, 0],
   radius: 2,
+  earthStage: 1,
+  stageCount: 7,
   initialLocation: { lat: 0, lon: 0 },
   ...overrides
 });
@@ -22,6 +24,14 @@ const createController = (overrides = {}) => createEarthExperienceController({
 describe("createEarthExperienceController", () => {
   it.each([undefined, -1, 1.5, Number.NaN])("rejects invalid earthStage %s", (earthStage) => {
     expect(() => createController({ earthStage })).toThrow(TypeError);
+  });
+
+  it.each([7, 99])("rejects earthStage outside the route %s", (earthStage) => {
+    expect(() => createController({ earthStage })).toThrow(TypeError);
+  });
+
+  it.each([undefined, 0, -1, 1.5, Number.NaN])("rejects invalid stageCount %s", (stageCount) => {
+    expect(() => createController({ stageCount })).toThrow(TypeError);
   });
 
   it("uses a custom earthStage for transition boundaries and layer presence", () => {

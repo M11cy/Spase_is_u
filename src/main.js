@@ -814,6 +814,7 @@ scene.add(earthKeyLight, earthKeyLight.target);
 const solarSystemLayer = createSolarSystemLayer({
   THREE,
   stage: STAGE_INDEX["solar-system"],
+  stageCount: stages.length,
   planets: solarPlanets,
   textures: solarTextures,
   quality,
@@ -1389,8 +1390,8 @@ function updateLabels(layerOpacities) {
     const opacity = String(Math.min(1, presence * 1.35));
     element.style.opacity = opacity;
     const point = screenPositionFor(data);
-    const offsetX = data.object3D ? 10 : data.stage >= 4 ? 18 : 16;
-    const offsetY = data.object3D ? -12 : data.stage >= 4 ? -10 : -22;
+    const offsetX = data.object3D ? 10 : data.stage >= STAGE_INDEX["local-group"] ? 18 : 16;
+    const offsetY = data.object3D ? -12 : data.stage >= STAGE_INDEX["local-group"] ? -10 : -22;
     visibleLabels.push(Object.freeze({
       id: data.id,
       element,
@@ -1426,6 +1427,7 @@ const earthExperience = createEarthExperienceController({
   earthPosition,
   radius: 14,
   earthStage: STAGE_INDEX.earth,
+  stageCount: stages.length,
   initialLocation: DEFAULT_LOCATION
 });
 const locationController = createLocationController({
