@@ -24,6 +24,7 @@ import {
   resolveCameraPose
 } from "./scene/create-scene.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
+import { createCosmicWebLayer } from "./scene/layers/cosmic-web.js";
 import { createLocalGroupLayer } from "./scene/layers/local-group.js";
 import { createMilkyWayLayer } from "./scene/layers/milky-way.js";
 import { selectEarthTextureRoutes } from "./scene/earth-assets.js";
@@ -1097,99 +1098,14 @@ const localGroupLayer = createLocalGroupLayer({
 const groupGalaxyAnnotations = Object.freeze(localGroupLayer.interactive.map((marker) => marker.userData.annotation));
 group.add(localGroupLayer.root);
 
-const cosmicWebGeometry = new THREE.BufferGeometry();
-const cosmicWebPositions = [];
-const cosmicWebColors = [];
-const webClusters = Array.from({ length: 74 }, () => ({
-  x: (Math.random() - 0.5) * 1320,
-  y: (Math.random() - 0.5) * 760,
-  z: -235 + (Math.random() - 0.5) * 190
-}));
-for (let i = 0; i < 9800; i += 1) {
-  const cluster = webClusters[Math.floor(Math.random() * webClusters.length)];
-  const next = webClusters[Math.floor(Math.random() * webClusters.length)];
-  const t = Math.random();
-  cosmicWebPositions.push(
-    THREE.MathUtils.lerp(cluster.x, next.x, t) + (Math.random() - 0.5) * 10,
-    THREE.MathUtils.lerp(cluster.y, next.y, t) + (Math.random() - 0.5) * 10,
-    THREE.MathUtils.lerp(cluster.z, next.z, t) + (Math.random() - 0.5) * 10
-  );
-  const color = i % 7 === 0 ? new THREE.Color(0xffd56b) : i % 3 === 0 ? new THREE.Color(0xff78d7) : new THREE.Color(0xc09bff);
-  const intensity = 0.5 + Math.random() * 0.5;
-  cosmicWebColors.push(color.r * intensity, color.g * intensity, color.b * intensity);
-}
-cosmicWebGeometry.setAttribute("position", new THREE.Float32BufferAttribute(cosmicWebPositions, 3));
-cosmicWebGeometry.setAttribute("color", new THREE.Float32BufferAttribute(cosmicWebColors, 3));
-const cosmicWebPoints = new THREE.Points(
-  cosmicWebGeometry,
-  new THREE.PointsMaterial({
-    map: glowDiscTexture,
-    size: 3.2,
-    transparent: true,
-    opacity: 0,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: false,
-    fog: false,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending
-  })
-);
-cosmicWebPoints.renderOrder = 6;
-group.add(cosmicWebPoints);
-
-const cosmicWebTexture = textureLoader.load(publicAsset("space/cosmic-web-bright.png"));
-cosmicWebTexture.colorSpace = THREE.SRGBColorSpace;
-const cosmicWebPlane = new THREE.Mesh(
-  new THREE.PlaneGeometry(4200, 2400),
-  new THREE.MeshBasicMaterial({
-    map: cosmicWebTexture,
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    depthTest: false,
-    fog: false,
-    toneMapped: false,
-    side: THREE.DoubleSide
-  })
-);
-cosmicWebPlane.position.set(0, 0, -185);
-cosmicWebPlane.renderOrder = 1;
-group.add(cosmicWebPlane);
-
-const cosmicDepthGeometry = new THREE.BufferGeometry();
-const cosmicDepthPositions = [];
-const cosmicDepthColors = [];
-for (let i = 0; i < 1200; i += 1) {
-  cosmicDepthPositions.push(
-    (Math.random() - 0.5) * 2200,
-    (Math.random() - 0.5) * 980,
-    -120 - Math.random() * 420
-  );
-  const color = i % 4 === 0 ? new THREE.Color(0xffd67a) : new THREE.Color(0xf0d7ff);
-  const intensity = 0.55 + Math.random() * 0.45;
-  cosmicDepthColors.push(color.r * intensity, color.g * intensity, color.b * intensity);
-}
-cosmicDepthGeometry.setAttribute("position", new THREE.Float32BufferAttribute(cosmicDepthPositions, 3));
-cosmicDepthGeometry.setAttribute("color", new THREE.Float32BufferAttribute(cosmicDepthColors, 3));
-const cosmicDepthStars = new THREE.Points(
-  cosmicDepthGeometry,
-  new THREE.PointsMaterial({
-    map: glowDiscTexture,
-    size: 4.2,
-    transparent: true,
-    opacity: 0,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: false,
-    fog: false,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending
-  })
-);
-cosmicDepthStars.renderOrder = 7;
-group.add(cosmicDepthStars);
+const cosmicWebLayer = createCosmicWebLayer({
+  THREE,
+  quality,
+  glowTexture: glowDiscTexture,
+  reducedMotion,
+  seed: 20260719
+});
+group.add(cosmicWebLayer.root);
 
 const sceneManager = createScene({
   THREE,
@@ -1203,7 +1119,8 @@ const sceneManager = createScene({
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
     Object.freeze({ stage: STAGE_INDEX["solar-system"], layer: solarSystemLayer }),
     Object.freeze({ stage: STAGE_INDEX["milky-way"], layer: milkyWayLayer }),
-    Object.freeze({ stage: STAGE_INDEX["local-group"], layer: localGroupLayer })
+    Object.freeze({ stage: STAGE_INDEX["local-group"], layer: localGroupLayer }),
+    Object.freeze({ stage: STAGE_INDEX["cosmic-web"], layer: cosmicWebLayer })
   ]),
   interactive: Object.freeze([...interactive])
 });
@@ -1510,14 +1427,6 @@ function updateStage() {
 
   updateLabels(layerOpacities);
 
-  const cosmicWebOpacity = layerOpacities[STAGE_INDEX["cosmic-web"]];
-  cosmicWebPoints.visible = cosmicWebOpacity > 0.03;
-  cosmicWebPoints.material.opacity = cosmicWebOpacity * 1.35;
-  cosmicWebPlane.visible = cosmicWebOpacity > 0.03;
-  cosmicWebPlane.material.opacity = cosmicWebOpacity;
-  cosmicDepthStars.visible = cosmicWebOpacity > 0.03;
-  cosmicDepthStars.material.opacity = cosmicWebOpacity * 1.15;
-
   if (activeObject && layerOpacities[activeObject.stage] <= 0) {
     closeAnnotation();
   }
@@ -1661,10 +1570,7 @@ const localVisualRoots = Object.freeze([
   bokehField,
   midSpaceStars,
   nearSpaceStars,
-  hyperdriveLines,
-  cosmicWebPoints,
-  cosmicWebPlane,
-  cosmicDepthStars
+  hyperdriveLines
 ]);
 
 function disposeLocalVisualResources() {
@@ -1681,7 +1587,6 @@ function disposeLocalVisualResources() {
   });
   geometries.forEach((geometry) => geometry?.dispose());
   materials.forEach((material) => material?.dispose());
-  cosmicWebTexture.dispose();
 }
 
 function disposeExperience() {

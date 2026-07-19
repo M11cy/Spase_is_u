@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
+import { createCosmicWebLayer } from "./cosmic-web.js";
 import { createLocalGroupLayer } from "./local-group.js";
 import { createMilkyWayLayer } from "./milky-way.js";
 
@@ -401,5 +402,155 @@ describe("createLocalGroupLayer", () => {
 
     first.dispose();
     second.dispose();
+  });
+});
+
+const createCosmicWeb = (overrides = {}) => createCosmicWebLayer({
+  THREE,
+  quality: { tier: "economy", cosmicWebPoints: 2600 },
+  glowTexture: null,
+  reducedMotion: false,
+  seed: 20260719,
+  ...overrides
+});
+
+describe("createCosmicWebLayer", () => {
+  it("builds a connected deterministic nearest-neighbour graph with frozen normalized records", () => {
+    const first = createCosmicWeb();
+    const second = createCosmicWeb();
+    const adjacency = first.graph.nodes.map(() => []);
+    first.graph.edges.forEach(([from, to]) => {
+      adjacency[from].push(to);
+      adjacency[to].push(from);
+    });
+    const visited = new Set([0]);
+    const queue = [0];
+    while (queue.length > 0) {
+      adjacency[queue.shift()].forEach((node) => {
+        if (visited.has(node)) return;
+        visited.add(node);
+        queue.push(node);
+      });
+    }
+
+    expect(first.graph).toEqual(second.graph);
+    expect(visited.size).toBe(first.graph.nodes.length);
+    expect(first.graph.edges.length).toBeGreaterThanOrEqual(first.graph.nodes.length - 1);
+    expect(first.graph.edges.length).toBeLessThanOrEqual(first.graph.nodes.length * 3);
+    expect(first.graph.edges.every(([from, to]) => from < to)).toBe(true);
+    expect(new Set(first.graph.edges.map((edge) => edge.join(":"))).size).toBe(first.graph.edges.length);
+    expect(Object.isFrozen(first.graph)).toBe(true);
+    expect(first.graph.nodes.every(Object.isFrozen)).toBe(true);
+    expect(first.graph.edges.every(Object.isFrozen)).toBe(true);
+
+    first.dispose();
+    second.dispose();
+  });
+
+  it("changes the graph when the seed changes without mutating either input", () => {
+    const quality = Object.freeze({ tier: "economy", cosmicWebPoints: 2600 });
+    const first = createCosmicWeb({ quality, seed: 11 });
+    const second = createCosmicWeb({ quality, seed: 12 });
+
+    expect(first.graph.nodes).not.toEqual(second.graph.nodes);
+    expect(quality).toEqual({ tier: "economy", cosmicWebPoints: 2600 });
+
+    first.dispose();
+    second.dispose();
+  });
+
+  it("supports the full safe-integer seed boundary", () => {
+    const layer = createCosmicWeb({ seed: Number.MAX_SAFE_INTEGER });
+
+    expect(layer.graph.nodes).toHaveLength(74);
+
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", 9800],
+    ["medium", 5200],
+    ["economy", 2600]
+  ])("places the exact %s quality point budget along volumetric filaments", (tier, cosmicWebPoints) => {
+    const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
+    const particles = layer.root.getObjectByName("cosmic-web-particles");
+    const positions = particles.geometry.getAttribute("position");
+    const distinctDepths = new Set(Array.from(positions.array).filter((_, index) => index % 3 === 2)
+      .map((value) => Math.round(value)));
+
+    expect(positions.count).toBe(cosmicWebPoints);
+    expect(distinctDepths.size).toBeGreaterThan(40);
+    expect(layer.root.getObjectByName("cosmic-web-filaments")?.isLineSegments).toBe(true);
+    expect(layer.root.getObjectByName("cosmic-web-nodes")?.isPoints).toBe(true);
+    expect(layer.root.getObjectByName("cosmic-web-depth")?.isPoints).toBe(true);
+    expect(layer.root.children.some(({ name }) => name.includes("plane"))).toBe(false);
+
+    layer.dispose();
+  });
+
+  it("uses independently faded observatory layers and shared parallax behavior", () => {
+    const layer = createCosmicWeb({ quality: { tier: "high", cosmicWebPoints: 9800 } });
+    const particles = layer.root.getObjectByName("cosmic-web-particles");
+    const filaments = layer.root.getObjectByName("cosmic-web-filaments");
+    const nodes = layer.root.getObjectByName("cosmic-web-nodes");
+    const depth = layer.root.getObjectByName("cosmic-web-depth");
+
+    expect([particles, filaments, nodes, depth].every(({ material }) => (
+      material.transparent && !material.depthWrite
+    ))).toBe(true);
+    expect(new Set([particles.renderOrder, filaments.renderOrder, nodes.renderOrder, depth.renderOrder]).size)
+      .toBeGreaterThan(2);
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    layer.setPresence(0.5);
+    expect(particles.material.opacity).toBeGreaterThan(0);
+    expect(particles.material.opacity).not.toBe(nodes.material.opacity);
+
+    layer.dispose();
+  });
+
+  it("honors reduced motion and fails closed for malformed presence and parallax", () => {
+    const reduced = createCosmicWeb({ reducedMotion: true });
+    const layer = createCosmicWeb();
+
+    expect(reduced.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+    layer.setPresence("visible");
+    expect(layer.root.visible).toBe(false);
+    expect(layer.updateParallax({ x: 1, y: "-1" })).toEqual({ x: 0, y: 0 });
+    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
+
+    reduced.dispose();
+    layer.dispose();
+  });
+
+  it.each([
+    { THREE: null },
+    { quality: null },
+    { quality: { tier: "economy", cosmicWebPoints: 0 } },
+    { quality: { tier: "economy", cosmicWebPoints: 2.5 } },
+    { seed: 1.5 },
+    { reducedMotion: "false" },
+    { THREE: { Group: THREE.Group } }
+  ])("rejects invalid boundary input %j", (overrides) => {
+    expect(() => createCosmicWebLayer({
+      THREE,
+      quality: { tier: "economy", cosmicWebPoints: 2600 },
+      glowTexture: null,
+      reducedMotion: false,
+      seed: 20260719,
+      ...overrides
+    })).toThrow(TypeError);
+  });
+
+  it("disposes every resource tree only once", () => {
+    const layer = createCosmicWeb();
+    const particles = layer.root.getObjectByName("cosmic-web-particles");
+    const disposeGeometry = vi.spyOn(particles.geometry, "dispose");
+    const disposeMaterial = vi.spyOn(particles.material, "dispose");
+
+    layer.dispose();
+    layer.dispose();
+
+    expect(disposeGeometry).toHaveBeenCalledOnce();
+    expect(disposeMaterial).toHaveBeenCalledOnce();
   });
 });
