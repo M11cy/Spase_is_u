@@ -419,7 +419,7 @@ git commit -m "feat: deliver luminous deep-space observatory scenes"
 - `screenshotMetrics(buffer)` additionally returns `purpleGridCoverage` and `brightGridCoverage` measured over fixed central grids.
 - `#distanceScale` keeps every scale marker and its active state in the DOM; CSS alone compacts mobile presentation.
 
-- [ ] **Step 1: Add and run RED pixel/layout gates**
+- [x] **Step 1: Add and run RED pixel/layout gates**
 
 Add fixed-cell coverage to the honest-victory E2E path and require Cosmic Web `purpleGridCoverage >= 0.60` desktop and `>= 0.40` mobile. Require Local Group bright-grid coverage to materially exceed the rejected baseline. Assert the mobile rail is compact, top-centred, and does not occupy the right subject region.
 
@@ -427,7 +427,7 @@ Run: `npm.cmd run test:e2e -- --grep "each real game victory"`
 
 Expected: FAIL on the rejected screenshots/composition before production changes.
 
-- [ ] **Step 2: Add and run RED projected-topology tests**
+- [x] **Step 2: Add and run RED projected-topology tests**
 
 Sample each Cosmic Web edge in settled-camera NDC space and assert broad grid coverage while retaining graph connectivity, deterministic records, exact budgets, three depth bands, and volume bounds. Project Local Group records into NDC grid cells and assert broader vertical/central clustered coverage with explicit empty cells.
 
@@ -435,18 +435,18 @@ Run: `npm.cmd test -- src/scene/layers/deep-space-layers.test.js`
 
 Expected: FAIL because the current 12 Cosmic islands and seven Local Group clusters leave too many cells empty.
 
-- [ ] **Step 3: Implement the minimal topology and rail correction**
+- [x] **Step 3: Implement the minimal topology and rail correction**
 
 Use staggered deterministic anchors, bounded nearest-neighbour plus inter-anchor links, and uniform/multi-strand particle sampling. Expand Local Group to primary/satellite clusters without uniform noise. In `@media (max-width: 760px)`, move the distance scale to a compact top-center safe area and render only `.active`, `.active + li`, and `li:has(+ .active)` markers visually.
 
-- [ ] **Step 4: Verify GREEN and regenerate evidence**
+- [x] **Step 4: Verify GREEN and regenerate evidence**
 
 Run the focused unit test, then the honest-victory E2E. Inspect all six new PNGs at original pixels and reject black/sparse/cropped results even if numeric thresholds pass.
 
-- [ ] **Step 5: Run full gates and independent review**
+- [x] **Step 5: Run full gates and independent review**
 
 Run `npm.cmd test`, `npm.cmd run test:coverage`, `npm.cmd run build`, `npm.cmd run test:e2e`, `npm.cmd audit --audit-level=high`, and `git diff --check`. Request independent visual and code review; fix every Critical/Important finding.
 
-- [ ] **Step 6: Record and commit**
+- [x] **Step 6: Record and commit**
 
 Append exact before/after grid, luminance, purple, Local Group and rail metrics to the Obsidian journal/report. Commit code/tests, then the SHA-bearing evidence update.

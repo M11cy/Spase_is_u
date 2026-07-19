@@ -316,3 +316,50 @@ Feature commit: `f7c38eb`.
 
 > [!warning] Остаточные риски
 > Production chunk остаётся больше `500 kB`. Mobile distance rail частично перекрывает правую область Local Group/Cosmic Web, но независимый visual review классифицировал это как Minor: horizontal overflow и неприемлемого crop нет.
+
+## Поправка 2026-07-20 — strict topology pixel acceptance
+
+Связанные документы: [[2026-07-19-deep-space-visual-overhaul-design#Поправка 2026-07-20 — topology-first pixel correction]] и [[2026-07-19-deep-space-visual-overhaul#Task 5A Strict topology and mobile-composition correction]].
+
+> [!success] Актуальный visual verdict
+> Повторная строгая проверка приняла все шесть кадров: `APPROVE 6/6`, Critical `0`, Important `0`. Эта секция заменяет прежнее замечание о правом mobile rail: шкала теперь находится в компактной top-center safe area и не закрывает основной Local Group/Cosmic Web subject.
+
+### RED → GREEN: пространственное покрытие
+
+| Сцена | Отклонённый baseline | Итоговый свежий кадр |
+| --- | ---: | ---: |
+| Local desktop bright-grid | `0.28125` | `0.43750` |
+| Local mobile bright-grid | `0.20000` | `0.60000` |
+| Cosmic desktop luminous ratio | `0.019375` | `0.055721` |
+| Cosmic desktop purple ratio / grid | `0.027001 / 0.43750` | `0.091894 / 0.91667` |
+| Cosmic mobile luminous ratio | `0.024405` | `0.076500` |
+| Cosmic mobile purple ratio / grid | `0.015237 / 0.21250` | `0.107316 / 0.81250` |
+
+- Local projected readable cells: `17 → 32` из `96`; занято `6/8` вертикальных рядов, settled width `0.664588`, бюджет high/medium/economy остаётся `260 / 160 / 90`.
+- Cosmic projected multi-edge coverage: `0.43750 → 0.96875`; high-граф содержит `120` узлов, `331` ребро, `18000` частиц, три depth bands и остаётся полностью связным/ограниченным published volume.
+- Medium seed `106` выявил review RED `280 > 276` рёбер. Cap-aware insertion сохранил spanning backbone и дал GREEN `276`; независимый sweep seeds `1..500` для всех tier получил `badCount 0`, `disconnected 0`.
+- Mobile rail сохраняет все значения в DOM, визуально показывает active/near markers, имеет размер не более `220 × 92`, центрирован с допуском `4 px`, находится в диапазоне `y=48..148`, не пересекает видимую подпись и не создаёт overflow.
+
+### Свежие кадры после финального `5/5`
+
+![[task-7-artifacts/galaxy.png]]
+![[task-7-artifacts/local-group.png]]
+![[task-7-artifacts/cosmic-web.png]]
+![[task-7-artifacts/galaxy-mobile.png]]
+![[task-7-artifacts/local-group-mobile.png]]
+![[task-7-artifacts/cosmic-web-mobile.png]]
+
+### Финальные gates
+
+- Unit: `177/177`, `12/12` files.
+- Coverage overall: statements `88.27%`, branches `78.32%`, functions `85.00%`, lines `90.19%`.
+- Changed files: `cosmic-web.js` — `99.61% / 94.73% / 100% / 100%`; `local-group.js` — `98.07% / 92.85% / 100% / 98.91%`.
+- Build: PASS, `49` modules; известный chunk-size advisory `1001.02 kB` остаётся неблокирующим.
+- E2E: `5/5` PASS за `2.9m`, включая честные победы, шесть свежих кадров, rail/no-overflow и zero console/WebGL errors.
+- Audit: `0 vulnerabilities`; `git diff --check`: clean; порт `4173`: clear.
+- Независимые strict visual и code re-reviews: Critical `0`, Important `0`, Minor `0` в коде; visual `APPROVE 6/6`.
+
+Design amendment commit: `742d96b`. Follow-up implementation commit: `ff4de20`.
+
+> [!warning] Остаточный риск
+> Production bundle остаётся больше `500 kB`. В desktop Cosmic Web некоторые дальние коннекторы тонкие, а центральная подпись слегка конкурирует с сетью; независимый strict visual review классифицировал это как Minor и принял кадр.
