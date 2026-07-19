@@ -363,3 +363,52 @@ Design amendment commit: `742d96b`. Follow-up implementation commit: `ff4de20`.
 
 > [!warning] Остаточный риск
 > Production bundle остаётся больше `500 kB`. В desktop Cosmic Web некоторые дальние коннекторы тонкие, а центральная подпись слегка конкурирует с сетью; независимый strict visual review классифицировал это как Minor и принял кадр.
+
+## Поправка 2026-07-20 — органические нити Cosmic Web и полная доступная шкала
+
+Связанные документы: [[2026-07-19-deep-space-visual-overhaul-design#Поправка 2026-07-20 — organic curved filament body]] и [[2026-07-19-deep-space-visual-overhaul#Task 5B Organic curved filaments and accessible compact rail]].
+
+> [!success] Итог
+> Все шесть кадров приняты корневой original-pixel проверкой: `ACCEPT 6/6`, Critical `0`, Important `0`. Прямые механические хорды больше не доминируют: сеть состоит из детерминированных дуг и particulate-пучков. Единственный visual Minor — несколько дальних слабых дуг всё ещё слегка графоподобны.
+
+### RED → GREEN
+
+- Geometry RED: `662` filament vertices вместо требуемых `6620`; старый renderer создавал один прямой сегмент на каждое из `331` рёбер.
+- Geometry GREEN: каждое graph edge получает `10` связанных cubic Bézier segments; не менее `75%` meaningful edges отклоняются от прямой хорды более чем на `1` world unit. Частицы проверяются на близость к той же polyline, а не к прямой хорде.
+- A11y RED: `#distanceScaleA11ySummary` отсутствовал. Первый GREEN выявил review-дефект: supplied `<`, `&` и entity-like text разбирался через `innerHTML`.
+- A11y final GREEN: пустой `.sr-only` placeholder заполняется через `textContent`, `#distanceScale` ссылается на него через `aria-describedby`, декоративный сокращённый `<ol>` имеет `aria-hidden="true"`; adversarial test требует точное полное значение маршрута.
+- Graph metadata не изменились: high/medium/economy nodes `120 / 92 / 68`, particles `18000 / 9800 / 5200`, high app graph `331` edges, connectedness, три depth bands, published volume и edge cap сохранены.
+
+### Финальные pixel metrics
+
+| Cosmic Web | Strict straight baseline | Organic final |
+| --- | ---: | ---: |
+| Desktop luminous | `0.055721` | `0.059646` |
+| Desktop purple / grid | `0.091894 / 0.91667` | `0.099260 / 0.93750` |
+| Mobile luminous | `0.076500` | `0.077011` |
+| Mobile purple / grid | `0.107316 / 0.81250` | `0.112911 / 0.83750` |
+
+Последний полный E2E заново записал `1920 × 1080` desktop и `390 × 844` mobile кадры честным маршрутом через публичные controls:
+
+![[task-7-artifacts/galaxy.png]]
+![[task-7-artifacts/local-group.png]]
+![[task-7-artifacts/cosmic-web.png]]
+![[task-7-artifacts/galaxy-mobile.png]]
+![[task-7-artifacts/local-group-mobile.png]]
+![[task-7-artifacts/cosmic-web-mobile.png]]
+
+### Gate hardening и финальная проверка
+
+- Первый полный E2E после Task 5B дал `4/5`: scroll guard показывал причину barrier, затем Earth stage-frame до готовности корабля стирал её через `showMission("")`. RED оказался timing-dependent и воспроизводился в полном suite.
+- Source-fix сохраняет только уже видимый текст, точно равный текущему immutable `stageAccess.reason`; focused Playwright `--repeat-each=3` прошёл без ошибок, независимый review — Critical/Important/Minor `0`.
+- Unit: `179/179`, `12/12` files.
+- Coverage overall: statements `88.53%`, branches `78.43%`, functions `85.41%`, lines `90.41%`.
+- Changed files: `cosmic-web.js` — `99.66% / 95.00% / 100% / 100%`; `create-shell.js` — `100% / 95.83% / 100% / 100%`.
+- Build: PASS, `49` modules; известный chunk-size advisory `1002.09 kB` остаётся неблокирующим.
+- Финальный полный E2E: `5/5` PASS за `3.0m`; audit: `0 vulnerabilities`; `git diff --check`: clean; порт `4173`: clear.
+- Task spec/quality review, a11y re-review, scroll-race review и root visual review: Critical `0`, Important `0`; кодовые Minor `0`.
+
+Коммиты: design/plan `878fe95`; organic geometry `aa7c05a`; safe a11y text `95fd3fa`; scroll barrier race `28ac228`.
+
+> [!warning] Остаточный риск
+> Production bundle остаётся больше `500 kB`. Несколько дальних слабых Cosmic Web дуг всё ещё могут читаться как граф, но корневая pixel-проверка признала это неблокирующим Minor после существенного удаления straight-chord доминирования.

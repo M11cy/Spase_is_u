@@ -467,7 +467,7 @@ Append exact before/after grid, luminance, purple, Local Group and rail metrics 
 - One internal cubic sampler consumes `{ start, end, edgeIndex, progress }` and returns a bounded `[x, y, z]`; filaments and particles share it.
 - `#distanceScale` gains `aria-describedby="distanceScaleA11ySummary"`; the summary contains every supplied stage label and distance while the compact visual list remains `aria-hidden="true"`.
 
-- [ ] **Step 1: Add and verify RED geometry tests**
+- [x] **Step 1: Add and verify RED geometry tests**
 
 Assert that each filament edge produces ten connected segments, at least `75%` of meaningful edges have an intermediate point more than `1` world unit from the direct chord, the curve endpoint records still match graph endpoints, and high/medium/economy rendered coordinates remain finite and bounded.
 
@@ -475,7 +475,7 @@ Run: `npm.cmd test -- src/scene/layers/deep-space-layers.test.js -t "curved orga
 
 Expected: FAIL because the current filament geometry stores one collinear segment per graph edge.
 
-- [ ] **Step 2: Add and verify RED accessibility test**
+- [x] **Step 2: Add and verify RED accessibility test**
 
 Assert a visually-hidden summary contains every `${stage.label}: ${stage.distance}`, the aside references its id, and the compact marker list is `aria-hidden`.
 
@@ -483,22 +483,22 @@ Run: `npm.cmd test -- src/ui/create-shell.test.js -t "complete distance route"`
 
 Expected: FAIL because the current compact marker list removes inactive values from the accessibility tree without a replacement summary.
 
-- [ ] **Step 3: Implement the shared bounded cubic sampler**
+- [x] **Step 3: Implement the shared bounded cubic sampler**
 
 Derive two stable perpendicular/vertical control offsets from `edgeIndex`, clamp control points within an inset volume, emit ten LineSegments segments per graph edge, and sample the exact existing point budget on the same curve before strand/jitter offsets. Mix pink into the existing violet/magenta particle colors and reduce sprite size only enough to create fine texture while keeping current pixel gates.
 
-- [ ] **Step 4: Implement the accessible rail summary**
+- [x] **Step 4: Implement the accessible rail summary**
 
 Create `#distanceScaleA11ySummary` with class `sr-only`, set the aside relationship, set `aria-hidden="true"` on the visual `<ol>`, and add a reusable clipping-only `.sr-only` rule that does not affect layout.
 
-- [ ] **Step 5: Verify focused GREEN and performance contracts**
+- [x] **Step 5: Verify focused GREEN and performance contracts**
 
 Run both focused suites, then the full deep-space layer suite. Confirm exact nodes/edges/particles, three depth bands, seed cap sweep behavior, idempotent disposal and all-tier bounds remain green.
 
-- [ ] **Step 6: Regenerate and inspect real pixels**
+- [x] **Step 6: Regenerate and inspect real pixels**
 
 Run the honest victory E2E, inspect all six original PNGs, and reject the result if long straight triangulation remains prominent, fine particulate texture disappears, or existing luminous/purple/grid/mobile-rail gates regress.
 
-- [ ] **Step 7: Run full gates, reviews and record evidence**
+- [x] **Step 7: Run full gates, reviews and record evidence**
 
 Run unit, coverage, build, full E2E, audit and diff hygiene. Obtain root visual acceptance, append exact metrics/SHAs to Obsidian evidence, then commit implementation and documentation.
