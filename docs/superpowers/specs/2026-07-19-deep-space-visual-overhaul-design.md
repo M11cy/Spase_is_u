@@ -152,3 +152,44 @@ related:
 - Unit gate проверяет meaningful fraction non-collinear intermediate samples, совпадение filament/particle curve contract, exact budgets, all-tier finite bounds и disposal.
 - Компактный mobile rail получает отдельную visually-hidden сводку всех `label: distance`; `aside` связывается с ней через `aria-describedby`, а визуальный сокращённый список исключается из accessibility tree через `aria-hidden`.
 - Все шесть кадров снова создаются честным public-UI маршрутом; synthetic curvature test не заменяет original-pixel inspection.
+
+## Поправка 2026-07-20 — procedural volumetric cosmic tissue
+
+> [!danger] Task 5C supersedes Task 5B pixel acceptance
+> Повторная root-проверка отклонила только Cosmic Web: curved foreground исправил прямые хорды, но регулярная решётка всё ещё оставляет `0.9273` desktop и `0.9065` mobile crop почти чёрными. Финальная сцена должна читаться как непрерывная объёмная материя референса, а не как граф на чёрном фоне.
+
+### Рассмотренные подходы
+
+1. **Depth-separated procedural shader tissue — выбран.** Три низкополигональных world-space mesh слоя дают непрерывное поле, детерминированный цвет и настоящий depth parallax при ограниченном числе draw calls.
+2. **CPU point fog.** Хорошо переиспользует текущие Points, но требует значительного нового бюджета, остаётся дискретным и рискует превратиться в запрещённое «просто увеличить частицы».
+3. **Single raymarched volume box.** Даёт максимальную глубину, но слишком дорог для software WebGL/high DPR, усложняет fallback и слабее масштабируется по quality tiers.
+
+### Архитектура
+
+- Новый focused-модуль `src/scene/layers/cosmic-tissue.js` владеет plane geometry, `ShaderMaterial`, deterministic uniforms, presence/parallax и immutable metadata; `cosmic-web.js` только компонует tissue с существующим graph foreground.
+- High/medium/economy создают соответственно `3 / 2 / 1` слоя в пределах published volume. High использует depth centers `-300 / -235 / -170`; сокращённые профили сохраняют ту же композицию, а не меняют экспозицию.
+- Каждый слой — world-space mesh, а не fullscreen bitmap/postprocess. Он остаётся в base scene, использует transparent additive blending, `depthWrite: false`, `depthTest: true`, `toneMapped: false` и не включается в bloom-only layer.
+- Fragment shader сочетает fixed-cost cellular/Voronoi boundary ridges, FBM domain warp, fine deterministic dust и sparse warm hotspots. Палитра смешивает violet, magenta, pink и локальный orange/gold без изменения renderer exposure.
+- Uniforms (`uSeed`, `uLayerIndex`, `uUvOffset`, palette, opacity) выводятся только из safe integer seed и frozen layer profile; time-driven animation отсутствует.
+- `setPresence` меняет `uPresence`; `updateParallax` сохраняет публичный root offset и дополнительно задаёт различный local offset каждому tissue layer. При reduced motion все offsets остаются нулевыми, яркость не меняется.
+- Geometry может быть общей для нескольких meshes; disposer обязан освободить каждый уникальный geometry/material ровно один раз. Composer failure по-прежнему показывает tissue через прямой base render.
+
+### Curved foreground hardening
+
+- Existing graph, edge records, node/particle budgets и десять rendered segments на edge не меняются.
+- Lateral и vertical control offsets ограничиваются **полной длиной хорды**. Реальный regression case high/seed `13`, edge `95 → 119`, имеет length `1.0793`; control bend не может использовать прежние hard minima `9 / 4`.
+- Unit RED проверяет, что максимальное отклонение sampled curve остаётся пропорциональным chord length даже для short edges, одновременно сохраняя `>=75%` meaningful edges с bend `>1`.
+
+### Pixel acceptance
+
+- `screenshotMetrics` добавляет `nearBlackRatio` для central crop (`luminance <= 10`) и `warmMagentaOrangeRatio`, требующий цветных pixels с luminance/saturation и magenta-or-orange channel relationships.
+- Текущий RED: near-black `0.9273 / 0.9065`, warm `0.0352 / 0.0369` desktop/mobile.
+- Финальный Cosmic Web gate: near-black `<=0.65` desktop и `<=0.72` mobile; warm-magenta-orange `>=0.08` desktop и `>=0.07` mobile.
+- Existing luminous, purple ratio, purple grid, mobile rail, label collision, no-overflow и honest progression gates остаются обязательными.
+- Numeric GREEN недостаточен: все шесть fresh PNG проверяются в original resolution относительно пользовательского референса. Galaxy и Local Group не должны визуально измениться.
+
+### Verification boundaries
+
+- Unit tests проверяют tier counts `3/2/1`, ShaderMaterial/base-pass flags, shader palette/algorithm sentinels, deterministic uniforms, distinct depth/parallax, reduced-motion stability, published bounds и idempotent disposal.
+- Exact graph nodes `120/92/68`, particles `18000/9800/5200`, connectedness, edge cap, three graph depth bands и frozen graph records остаются неизменными.
+- Performance ограничивается одним quad draw call на tissue layer и fixed shader loops; новый point budget, fullscreen asset, global exposure adjustment и threshold lowering запрещены.
