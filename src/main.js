@@ -25,7 +25,6 @@ import {
 } from "./scene/create-scene.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
 import { selectEarthTextureRoutes } from "./scene/earth-assets.js";
-import { createHeliosphereLayer } from "./scene/layers/heliosphere.js";
 import { createSolarSystemLayer } from "./scene/layers/solar-system.js";
 import { createTextureStore } from "./scene/textures.js";
 import { createAnnotationPanel } from "./ui/annotation-panel.js";
@@ -375,12 +374,12 @@ function updateMissionForStage() {
     return;
   }
 
-  if (activeStage === 6 && !journeyState.webComplete) {
+  if (activeStage === 5 && !journeyState.webComplete) {
     showMission(journeyState.webQuestStarted ? "Поворачивай кусочки, собирая нить от галактики к дальнему узлу." : "Поверни кусочки нитей и соедини нашу галактику с дальним узлом.");
     return;
   }
 
-  if (activeStage === 7) {
+  if (activeStage === 6) {
     if (journeyState.finalStep === 0) {
       showMission("Нажми «Зажечь звезду», чтобы продолжить рассказ.");
       return;
@@ -425,7 +424,7 @@ function cueForStageState(stage, exactStage = stage) {
     return "solarArrival";
   }
 
-  if (stage === 6) {
+  if (stage === 5) {
     if (journeyState.webComplete) {
       return "universeComplete";
     }
@@ -435,7 +434,7 @@ function cueForStageState(stage, exactStage = stage) {
     return "universeArrival";
   }
 
-  if (stage === 7) {
+  if (stage === 6) {
     if (journeyState.finalStep >= 2) {
       return "finalStar";
     }
@@ -469,35 +468,35 @@ function cueForScrollPosition(exactStage) {
     return cueForStageState(2, exactStage);
   }
 
-  if (exactStage < 3.5) {
+  if (exactStage < 2.5) {
     return journeyState.solarComplete ? "solarDeparture" : cueForStageState(2, exactStage);
   }
 
-  if (exactStage < 4.26) {
+  if (exactStage < 3.26) {
     return "milkyWay";
   }
 
-  if (exactStage < 4.76) {
+  if (exactStage < 3.76) {
     return "milkyWayDeparture";
   }
 
-  if (exactStage < 5.26) {
+  if (exactStage < 4.26) {
     return "localGroup";
   }
 
-  if (exactStage < 5.76) {
+  if (exactStage < 4.76) {
     return "localGroupDeparture";
   }
 
-  if (exactStage < 6.26) {
-    return cueForStageState(6, exactStage);
+  if (exactStage < 5.26) {
+    return cueForStageState(5, exactStage);
   }
 
-  if (exactStage < 6.76) {
+  if (exactStage < 5.76) {
     return "unknownTransition";
   }
 
-  return cueForStageState(7, exactStage);
+  return cueForStageState(6, exactStage);
 }
 
 function handleNarrationFromStage(exactStage, previousStage) {
@@ -1037,7 +1036,7 @@ function handlePanelNarration(data) {
     return;
   }
 
-  if (data.stage === 6) {
+  if (data.stage === 5) {
     startWebQuest();
   }
 }
@@ -1045,22 +1044,6 @@ solarSystemLayer.root.updateMatrixWorld(true);
 const solarSunPosition = solarSystemLayer.root.getObjectByName("sun")
   .getWorldPosition(new THREE.Vector3());
 sunLight.position.copy(solarSunPosition);
-
-const voyagerAnnotationData = freezePositionedAnnotation({
-  ...objects.find((object) => object.id === "voyager"),
-  title: "Р­С‚Рѕ Р’РѕСЏРґР¶РµСЂ-1",
-  position: [102, 12, -24]
-});
-const heliosphereLayer = createHeliosphereLayer({
-  THREE,
-  glowTexture: glowDiscTexture,
-  quality,
-  composition: nearSpaceComposition,
-  voyager: voyagerAnnotationData,
-  sunPosition: Object.freeze(solarSunPosition.toArray())
-});
-const [voyagerMarker] = heliosphereLayer.interactive;
-const voyagerAnnotation = voyagerMarker.userData.annotation;
 
 const galaxyGeometry = new THREE.BufferGeometry();
 const galaxyPositions = [];
@@ -1305,8 +1288,7 @@ const sceneManager = createScene({
   cameraTarget,
   layers: Object.freeze([
     Object.freeze({ stage: earthAnnotation.stage, layer: earthLayer }),
-    Object.freeze({ stage: 2, layer: solarSystemLayer }),
-    Object.freeze({ stage: 3, layer: heliosphereLayer })
+    Object.freeze({ stage: 2, layer: solarSystemLayer })
   ]),
   interactive: Object.freeze([...interactive])
 });
@@ -1357,10 +1339,9 @@ function createLabel(data) {
 const labelTargets = [
   earthAnnotation,
   ...solarAnnotations,
-  voyagerAnnotation,
   ...galaxyAnnotations,
   ...groupGalaxyAnnotations,
-  ...regionAnnotations.filter((annotation) => ![4, 5, 7].includes(annotation.stage))
+  ...regionAnnotations.filter((annotation) => ![3, 4, 6].includes(annotation.stage))
 ];
 const labels = labelTargets.map((data, index) => Object.freeze({
   data,
@@ -1562,7 +1543,7 @@ function updateStage() {
   document.body.dataset.stage = String(activeStage);
   handleNarrationFromStage(exactStage, previousStage);
 
-  const bokehOpacity = journeyTransitionAmount * 0.8 + layerOpacities[6] * 1.2 + layerOpacities[7] * 0.85;
+  const bokehOpacity = journeyTransitionAmount * 0.8 + layerOpacities[5] * 1.2 + layerOpacities[6] * 0.85;
   bokehField.visible = bokehOpacity > 0.03;
   bokehField.children.forEach((sprite) => {
     sprite.material.opacity = sprite.userData.baseOpacity * bokehOpacity;
@@ -1583,15 +1564,14 @@ function updateStage() {
 
   updateEarthRenderTelemetry(layerOpacities);
 
-  const unknownOpacity = layerOpacities[7];
+  const unknownOpacity = layerOpacities[6];
   unknownLayer.style.opacity = String(unknownOpacity);
   unknownLayer.style.transform = `translateY(${(1 - unknownOpacity) * 18}px)`;
 
   const midStarOpacity = Math.max(
     layerOpacities[2] * 0.72,
-    layerOpacities[3] * 0.8,
-    layerOpacities[4] * 0.56,
-    layerOpacities[7] * 0.9,
+    layerOpacities[3] * 0.56,
+    layerOpacities[6] * 0.9,
     journeyTransitionAmount * 0.9
   );
   midSpaceStars.visible = midStarOpacity > 0.03;
@@ -1600,7 +1580,6 @@ function updateStage() {
   const nearStarOpacity = Math.max(
     layerOpacities[1] * 0.78,
     layerOpacities[2] * 0.86,
-    layerOpacities[3] * 0.76,
     journeyTransitionAmount * 0.35
   );
   nearSpaceStars.visible = nearStarOpacity > 0.03;
@@ -1608,7 +1587,7 @@ function updateStage() {
 
   updateLabels(layerOpacities);
 
-  const galaxyOpacity = layerOpacities[4];
+  const galaxyOpacity = layerOpacities[3];
   galaxy.visible = galaxyOpacity > 0.03;
   galaxy.material.opacity = galaxyOpacity * 0.72;
   milkyWayGlow.visible = galaxyOpacity > 0.03;
@@ -1619,13 +1598,13 @@ function updateStage() {
     marker.visible = galaxyAnnotationMarkers.visible;
     marker.material.opacity = marker.userData.baseOpacity * galaxyAnnotationOpacity;
   });
-  const localGroupOpacity = layerOpacities[5];
+  const localGroupOpacity = layerOpacities[4];
   localGroup.visible = localGroupOpacity > 0.03;
   localGroup.children.forEach((dot) => {
     dot.material.opacity = dot.userData.baseOpacity * localGroupOpacity;
     dot.visible = localGroup.visible;
   });
-  const cosmicWebOpacity = layerOpacities[6];
+  const cosmicWebOpacity = layerOpacities[5];
   cosmicWebPoints.visible = cosmicWebOpacity > 0.03;
   cosmicWebPoints.material.opacity = cosmicWebOpacity * 1.35;
   cosmicWebPlane.visible = cosmicWebOpacity > 0.03;
@@ -1675,7 +1654,7 @@ function onClick(event) {
     return;
   }
 
-  if (activeStage === 7 && !hovered) {
+  if (activeStage === 6 && !hovered) {
     if (journeyState.finalStep === 2) {
       placeStar(event.clientX, event.clientY);
     }

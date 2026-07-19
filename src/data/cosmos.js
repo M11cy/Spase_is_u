@@ -10,12 +10,13 @@ export const STAGES = deepFreeze([
   { id: "place", label: "Место", distance: "0 км", camera: { position: [0, 7, 20], target: [0, 0, -80], fov: 52 }, motion: "static" },
   { id: "earth", label: "Земля", distance: "6371 км", camera: { position: [0, 3.5, 29], target: [4.5, -3.5, 0], fov: 46 }, motion: "static" },
   { id: "solar-system", label: "Солнечная система", distance: "1 а.е.", camera: { position: [0, 12, 108], target: [8, 0, 0], fov: 48 }, motion: "transition-only" },
-  { id: "heliosphere", label: "Гелиосфера", distance: "120 а.е.", camera: { position: [0, 17, 190], target: [0, 0, -18], fov: 50 }, motion: "transition-only" },
   { id: "milky-way", label: "Млечный Путь", distance: "27 000 св. лет", camera: { position: [0, 20, 305], target: [0, 0, -80], fov: 50 }, motion: "static" },
   { id: "local-group", label: "Локальная группа", distance: "2.5 млн св. лет", camera: { position: [0, 23, 405], target: [0, 0, -138], fov: 50 }, motion: "static" },
   { id: "cosmic-web", label: "Космическая сеть", distance: "сотни млн св. лет", camera: { position: [0, 26, 540], target: [0, 0, -235], fov: 52 }, motion: "static" },
   { id: "unknown", label: "?", distance: "? световых лет", camera: { position: [0, 29, 680], target: [0, 0, -340], fov: 52 }, motion: "static" }
 ]);
+
+export const STAGE_INDEX = Object.freeze(Object.fromEntries(STAGES.map(({ id }, index) => [id, index])));
 
 export const COLOR_ROLES = deepFreeze({
   cyan: 0x6fc7ff, solar: 0xffc46b, mars: 0xcf684d, deep: 0x9b8cff, white: 0xf4f8ff
@@ -25,7 +26,7 @@ const objects = [
   {
     id: "earth",
     title: "Земля",
-    stage: 1,
+    stage: STAGE_INDEX["earth"],
     text: "Земля - наш дом: океаны, атмосфера, жизнь и точка отсчета для всех космических масштабов.",
     discovery: "Известна человечеству с древности; как планета осмыслена в античности и Новое время.",
     distance: "1 а.е. от Солнца",
@@ -37,7 +38,7 @@ const objects = [
   {
     id: "mars",
     title: "Марс",
-    stage: 2,
+    stage: STAGE_INDEX["solar-system"],
     text: "Красная планета с тонкой атмосферой, следами древней воды и роботами-исследователями на поверхности.",
     discovery: "Известен с древности; телескопические наблюдения развили Галилей и последующие астрономы.",
     distance: "1.52 а.е. от Солнца",
@@ -49,7 +50,7 @@ const objects = [
   {
     id: "jupiter",
     title: "Юпитер",
-    stage: 2,
+    stage: STAGE_INDEX["solar-system"],
     text: "Крупнейшая планета Солнечной системы. Его гравитация заметно формирует архитектуру окрестных орбит.",
     discovery: "Известен с древности; Галилей открыл четыре крупных спутника в 1610 году.",
     distance: "5.2 а.е. от Солнца",
@@ -61,7 +62,7 @@ const objects = [
   {
     id: "neptune",
     title: "Нептун",
-    stage: 2,
+    stage: STAGE_INDEX["solar-system"],
     text: "Планета, найденная математикой: ее положение вычислили по возмущениям орбиты Урана.",
     discovery: "Наблюдал Иоганн Галле в 1846 году по расчетам Урбена Леверье.",
     distance: "30 а.е. от Солнца",
@@ -71,21 +72,9 @@ const objects = [
     color: 0x4f76ff
   },
   {
-    id: "voyager",
-    title: "Вояджер-1",
-    stage: 3,
-    text: "Самый дальний аппарат человечества. Он пересек гелиопаузу и продолжает передавать данные из межзвездной среды.",
-    discovery: "Запущен NASA 5 сентября 1977 года.",
-    distance: "За пределами гелиосферы",
-    image: "/space/voyager-heliosphere.jpg",
-    position: [94, 8, -22],
-    radius: 0.65,
-    color: 0xffffff
-  },
-  {
     id: "sagittarius",
     title: "Стрелец A*",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Сверхмассивная черная дыра в центре Млечного Пути. Вокруг нее движутся звезды центрального скопления.",
     discovery: "Радиоисточник выделили Брюс Балик и Роберт Браун в 1974 году.",
     distance: "Около 27 000 световых лет",
@@ -97,7 +86,7 @@ const objects = [
   {
     id: "andromeda",
     title: "Андромеда",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Ближайшая крупная галактика к Млечному Пути. Через миллиарды лет две галактики сольются.",
     discovery: "Как внегалактический объект доказана Эдвином Хабблом в 1920-х.",
     distance: "Около 2.5 млн световых лет",
@@ -109,7 +98,7 @@ const objects = [
   {
     id: "web",
     title: "Космическая сеть",
-    stage: 6,
+    stage: STAGE_INDEX["cosmic-web"],
     text: "На самых больших масштабах галактики собираются в нити и узлы, между которыми лежат гигантские пустоты.",
     discovery: "Структура выявлена обзорами красных смещений галактик во второй половине XX века.",
     distance: "Сотни миллионов и миллиарды световых лет",
@@ -122,19 +111,9 @@ const objects = [
 
 const regionAnnotations = [
   {
-    id: "heliosphere",
-    title: "Гелиосфера",
-    stage: 3,
-    text: "Гелиосфера - огромный пузырь солнечного ветра вокруг Солнечной системы. На его границе начинается межзвездная среда.",
-    discovery: "Границы подтверждены данными Voyager 1 и Voyager 2 в 2012 и 2018 годах.",
-    distance: "Сотни астрономических единиц",
-    image: "/space/voyager-heliosphere.jpg",
-    position: [0, 0, -18]
-  },
-  {
     id: "milky-way",
     title: "Млечный Путь",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Наша галактика - спиральная система из звезд, газа, пыли и темной материи. Солнце находится далеко от центра, в одном из рукавов.",
     discovery: "Как звездная система осмыслена после работ Галилея, Гершеля и астрономии XX века.",
     distance: "Около 100 000 световых лет в диаметре",
@@ -144,7 +123,7 @@ const regionAnnotations = [
   {
     id: "local-group",
     title: "Локальная группа",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Локальная группа - соседство Млечного Пути, Андромеды, Треугольника и десятков карликовых галактик.",
     discovery: "Масштаб соседних галактик был уточнен Эдвином Хабблом в 1920-х.",
     distance: "Несколько миллионов световых лет",
@@ -154,7 +133,7 @@ const regionAnnotations = [
   {
     id: "cosmic-web-region",
     title: "Космическая сеть",
-    stage: 6,
+    stage: STAGE_INDEX["cosmic-web"],
     text: "На самых больших масштабах материя собирается в узлы и нити. Между ними остаются огромные пустоты.",
     discovery: "Структура выявлена обзорами красных смещений галактик во второй половине XX века.",
     distance: "Сотни миллионов и миллиарды световых лет",
@@ -164,7 +143,7 @@ const regionAnnotations = [
   {
     id: "unknown-beyond",
     title: "?",
-    stage: 7,
+    stage: STAGE_INDEX.unknown,
     text: "Дальше ничего не понятно. Мы видим только границу наблюдаемой Вселенной и можем строить гипотезы о том, что находится за ней.",
     discovery: "Пока неизвестно. Может, вы будете тем, кто узнает это.",
     distance: "? световых лет",
@@ -178,7 +157,7 @@ const galaxy = [
   {
     id: "galactic-center",
     title: "Центр Галактики",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Плотная центральная область Млечного Пути. Здесь находится сверхмассивная черная дыра Стрелец A* и старые звездные скопления.",
     discovery: "Центр был уточнен по радио- и инфракрасным наблюдениям XX века.",
     distance: "Около 27 000 световых лет",
@@ -188,7 +167,7 @@ const galaxy = [
   {
     id: "orion-arm",
     title: "Рукав Ориона",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Локальный спиральный рукав, в котором находится Солнце. Это наш район внутри диска Млечного Пути.",
     discovery: "Структура локального рукава уточнялась по картам звезд, газа и мазеров.",
     distance: "Солнце находится внутри этого рукава",
@@ -197,7 +176,7 @@ const galaxy = [
   {
     id: "perseus-arm",
     title: "Рукав Персея",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Один из крупных спиральных рукавов Млечного Пути, богатый газом, пылью и областями звездообразования.",
     discovery: "Выделен по радионаблюдениям нейтрального водорода и молодых звезд.",
     distance: "Тысячи световых лет от Солнца",
@@ -206,7 +185,7 @@ const galaxy = [
   {
     id: "galactic-halo",
     title: "Гало",
-    stage: 4,
+    stage: STAGE_INDEX["milky-way"],
     text: "Разреженная сферическая область вокруг диска: старые звезды, шаровые скопления и темная материя.",
     discovery: "Гало выявлено по распределению шаровых скоплений и движению звезд.",
     distance: "Сотни тысяч световых лет в поперечнике",
@@ -218,7 +197,7 @@ const localGroup = [
   {
     id: "group-milky-way",
     title: "Млечный Путь",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Наша спиральная галактика и один из двух главных центров массы Локальной группы.",
     discovery: "Как отдельная звездная система осмыслена в Новое время.",
     distance: "Нулевая точка отсчета",
@@ -230,7 +209,7 @@ const localGroup = [
   {
     id: "group-andromeda",
     title: "Андромеда",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Ближайшая крупная спиральная галактика. Через несколько миллиардов лет сольется с Млечным Путем.",
     discovery: "Внегалактическая природа доказана Эдвином Хабблом в 1920-х.",
     distance: "Около 2.5 млн световых лет",
@@ -242,7 +221,7 @@ const localGroup = [
   {
     id: "group-triangulum",
     title: "Треугольник",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Галактика M33, третья крупная спиральная галактика Локальной группы.",
     discovery: "Известна как туманность, внегалактическая природа уточнена в XX веке.",
     distance: "Около 2.7 млн световых лет",
@@ -253,7 +232,7 @@ const localGroup = [
   {
     id: "group-lmc",
     title: "Большое Магелланово Облако",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Крупная спутниковая галактика Млечного Пути, хорошо видимая из Южного полушария.",
     discovery: "Описывалась мореплавателями Южного полушария; названа по экспедиции Магеллана.",
     distance: "Около 160 000 световых лет",
@@ -264,7 +243,7 @@ const localGroup = [
   {
     id: "group-smc",
     title: "Малое Магелланово Облако",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Меньшая спутниковая галактика Млечного Пути, связанная с Большим Магеллановым Облаком газовым мостом.",
     discovery: "Известна наблюдателям Южного полушария задолго до телескопов.",
     distance: "Около 200 000 световых лет",
@@ -275,7 +254,7 @@ const localGroup = [
   {
     id: "group-m32",
     title: "M32",
-    stage: 5,
+    stage: STAGE_INDEX["local-group"],
     text: "Компактная эллиптическая спутниковая галактика Андромеды.",
     discovery: "Каталогизирована Шарлем Мессье в XVIII веке.",
     distance: "Спутник Андромеды",

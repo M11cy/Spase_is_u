@@ -2,7 +2,6 @@ const NAVIGATION_LABELS = Object.freeze({
   place: "Дом",
   earth: "Земля",
   "solar-system": "Система",
-  heliosphere: "Гелиосфера",
   "milky-way": "Галактика",
   "local-group": "Группа",
   "cosmic-web": "Вселенная",
@@ -142,8 +141,7 @@ export function createShell({ root, stages }) {
         </div>
       </section>
       <div class="scroll-space" aria-hidden="true">
-        <section></section><section></section><section></section><section></section>
-        <section></section><section></section><section></section><section></section>
+        ${stages.map(() => "<section></section>").join("")}
       </div>
     </main>
   `;

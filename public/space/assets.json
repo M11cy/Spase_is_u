@@ -39,11 +39,6 @@
     "webp": "/space/neptune.webp",
     "fallback": "/space/neptune.jpg"
   },
-  "/space/voyager-heliosphere.jpg": {
-    "avif": "/space/voyager-heliosphere.avif",
-    "webp": "/space/voyager-heliosphere.webp",
-    "fallback": "/space/voyager-heliosphere.jpg"
-  },
   "/space/sagittarius-a.jpg": {
     "avif": "/space/sagittarius-a.avif",
     "webp": "/space/sagittarius-a.webp",

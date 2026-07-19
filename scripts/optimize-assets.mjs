@@ -12,7 +12,6 @@ const DEFAULT_SOURCES = Object.freeze([
   "mars.jpg",
   "jupiter.jpg",
   "neptune.jpg",
-  "voyager-heliosphere.jpg",
   "sagittarius-a.jpg",
   "milky-way-realistic.jpg",
   "andromeda.jpg",
