@@ -11,6 +11,12 @@ import { createEngineImageDataUri, createEnginePuzzle } from "./core/engine-puzz
 import { createWebFlowGame } from "./core/web-flow-game.js";
 import { createCouponWheel } from "./core/coupon-wheel.js";
 import { computeStageState, interpolateCamera } from "./core/stage-state.js";
+import {
+  blockReasonForStage,
+  clampStageTarget,
+  getHighestUnlockedStage,
+  scrollYForStage
+} from "./core/stage-access.js";
 import { ANNOTATIONS, OBJECTS, SOLAR_PLANETS, STAGES, STAGE_INDEX } from "./data/cosmos.js";
 import {
   WORLD_IMAGERY_ATTRIBUTION,
@@ -260,6 +266,11 @@ const journeyState = {
   finalStep: 0,
   subtitlesHidden: false
 };
+let stageAccess = Object.freeze({
+  highestUnlockedStage: getHighestUnlockedStage({ stages, journeyState }),
+  reason: blockReasonForStage({ stages, journeyState })
+});
+shell.setStageAccess(stageAccess);
 
 function updateVoiceButton() {
   const isPlaying = journeyState.voiceEnabled && !narrationAudio.paused;
@@ -284,6 +295,40 @@ function syncJourneyClasses() {
 function showMission(message = "") {
   missionStatus.hidden = !message;
   missionStatus.textContent = message;
+}
+
+function syncStageAccess() {
+  stageAccess = Object.freeze({
+    highestUnlockedStage: getHighestUnlockedStage({ stages, journeyState }),
+    reason: blockReasonForStage({ stages, journeyState })
+  });
+  shell.setStageAccess(stageAccess);
+  return stageAccess;
+}
+
+function announceStageBlock() {
+  if (!stageAccess.reason) return;
+  if (!missionStatus.hidden && missionStatus.textContent === stageAccess.reason) return;
+  showMission(stageAccess.reason);
+}
+
+const maxJourneyScroll = () => Math.max(0, document.body.scrollHeight - window.innerHeight);
+const allowedJourneyScroll = () => scrollYForStage({
+  stage: stageAccess.highestUnlockedStage,
+  stageCount: stages.length,
+  maxScroll: maxJourneyScroll()
+});
+
+function scrollJourneyTo(top, behavior = "auto") {
+  window.scrollTo({ top: Math.max(0, top), behavior });
+}
+
+function guardCurrentScroll({ announce = false } = {}) {
+  const allowedScrollY = allowedJourneyScroll();
+  if (window.scrollY <= allowedScrollY + 0.5) return false;
+  scrollJourneyTo(allowedScrollY);
+  if (announce) announceStageBlock();
+  return true;
 }
 
 function syncSubtitleVisibility() {
@@ -884,6 +929,7 @@ function catchRocket() {
   }
 
   journeyState.rocketCaught = true;
+  syncStageAccess();
   rocketGame.setCaught();
   setNarration("earthRocketCaught", { force: true });
   showMission("Ракета поймана. Листай дальше, чтобы покинуть Землю.");
@@ -952,6 +998,7 @@ function completeEngine() {
     return;
   }
   journeyState.solarComplete = true;
+  syncStageAccess();
   setNarration("solarComplete", { force: true });
   showMission("Двигатель собран и снова работает. Листай дальше!");
   closeEnginePuzzle();
@@ -977,6 +1024,7 @@ function completeWebPath() {
     return;
   }
   journeyState.webComplete = true;
+  syncStageAccess();
   setNarration("universeComplete", { force: true });
   showMission("Нить собрана до конца — всё во Вселенной связано. Листай к неизвестному.");
   syncJourneyClasses();
@@ -1321,8 +1369,11 @@ function updateEarthRenderTelemetry(layerOpacities) {
 function updateStage() {
   if (!journeyStarted) return;
   const previousStage = activeStage;
+  const allowedScrollY = allowedJourneyScroll();
+  const guardedScrollY = Math.min(window.scrollY, allowedScrollY);
+  if (window.scrollY > allowedScrollY + 0.5) scrollJourneyTo(allowedScrollY);
   currentStageState = computeStageState({
-    scrollY: window.scrollY,
+    scrollY: guardedScrollY,
     scrollHeight: document.body.scrollHeight,
     viewportHeight: window.innerHeight,
     stageCount: stages.length,
@@ -1447,7 +1498,7 @@ function openPanel(data, trigger) {
 function startJourney() {
   markUserInteraction();
   journeyStarted = true;
-  window.scrollTo({ top: 0, behavior: "auto" });
+  scrollJourneyTo(0);
   setNarration("homeStart", { play: journeyState.voiceEnabled, force: true });
   updateMissionForStage();
 }
@@ -1617,9 +1668,83 @@ function onLocateClick(event) {
   locationController.locate();
 }
 
-function onJourneyInteraction() {
+function onJourneyScroll() {
   if (!journeyStarted) return;
   markUserInteraction();
+  guardCurrentScroll({ announce: true });
+}
+
+const wheelDeltaInPixels = (event) => {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight;
+  return event.deltaY;
+};
+
+function onJourneyWheel(event) {
+  if (!journeyStarted) return;
+  if (event.ctrlKey || event.metaKey) return;
+  markUserInteraction();
+  const deltaY = wheelDeltaInPixels(event);
+  if (deltaY <= 0 || window.scrollY + deltaY <= allowedJourneyScroll() + 0.5) return;
+  event.preventDefault();
+  scrollJourneyTo(allowedJourneyScroll());
+  announceStageBlock();
+}
+
+let lastTouchY = null;
+
+function onJourneyTouchStart(event) {
+  if (!journeyStarted) return;
+  markUserInteraction();
+  if (event.touches.length !== 1) {
+    lastTouchY = null;
+    return;
+  }
+  lastTouchY = event.touches[0]?.clientY ?? null;
+}
+
+function onJourneyTouchMove(event) {
+  if (!journeyStarted) return;
+  markUserInteraction();
+  if (event.touches.length !== 1) {
+    lastTouchY = null;
+    return;
+  }
+  if (lastTouchY == null) return;
+  const currentTouchY = event.touches[0]?.clientY;
+  if (!Number.isFinite(currentTouchY)) return;
+  const forwardDelta = lastTouchY - currentTouchY;
+  lastTouchY = currentTouchY;
+  if (forwardDelta <= 0 || window.scrollY + forwardDelta <= allowedJourneyScroll() + 0.5) return;
+  event.preventDefault();
+  scrollJourneyTo(allowedJourneyScroll());
+  announceStageBlock();
+}
+
+function onJourneyTouchEnd() {
+  lastTouchY = null;
+}
+
+const keyboardScrollDelta = (event) => {
+  if (event.key === "End") return maxJourneyScroll() - window.scrollY;
+  if (event.key === "PageDown") return window.innerHeight * 0.9;
+  if (event.key === "ArrowDown") return 40;
+  if ((event.key === " " || event.key === "Spacebar") && !event.shiftKey) return window.innerHeight * 0.9;
+  return 0;
+};
+
+function onJourneyKeyDown(event) {
+  if (!journeyStarted) return;
+  markUserInteraction();
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+  if ((event.key === " " || event.key === "Spacebar") && target?.closest("button, a[href]")) return;
+  const forwardDelta = keyboardScrollDelta(event);
+  if (forwardDelta <= 0 || window.scrollY + forwardDelta <= allowedJourneyScroll() + 0.5) return;
+  event.preventDefault();
+  scrollJourneyTo(allowedJourneyScroll());
+  announceStageBlock();
 }
 
 railButtons.forEach((button) => {
@@ -1627,9 +1752,17 @@ railButtons.forEach((button) => {
     event.stopPropagation();
     if (!journeyStarted) return;
     markUserInteraction();
-    const stage = Number(button.dataset.stage);
-    const maxScroll = document.body.scrollHeight - window.innerHeight;
-    window.scrollTo({ top: maxScroll * (stage / (stages.length - 1)), behavior: reducedMotion ? "auto" : "smooth" });
+    const requestedStage = Number(button.dataset.stage);
+    const stage = clampStageTarget({
+      requestedStage,
+      highestUnlockedStage: stageAccess.highestUnlockedStage
+    });
+    if (stage !== requestedStage) announceStageBlock();
+    scrollJourneyTo(scrollYForStage({
+      stage,
+      stageCount: stages.length,
+      maxScroll: maxJourneyScroll()
+    }), reducedMotion ? "auto" : "smooth");
   }, { signal: listenerSignal });
 });
 
@@ -1711,10 +1844,13 @@ shell.closeButton.addEventListener("click", (event) => {
 }, { signal: listenerSignal });
 window.addEventListener("resize", onResize, { signal: listenerSignal });
 window.addEventListener("pointermove", onPointerMove, { signal: listenerSignal });
-window.addEventListener("scroll", onJourneyInteraction, { passive: true, signal: listenerSignal });
-window.addEventListener("wheel", onJourneyInteraction, { passive: true, signal: listenerSignal });
-window.addEventListener("touchstart", onJourneyInteraction, { passive: true, signal: listenerSignal });
-window.addEventListener("keydown", onJourneyInteraction, { signal: listenerSignal });
+window.addEventListener("scroll", onJourneyScroll, { passive: true, signal: listenerSignal });
+window.addEventListener("wheel", onJourneyWheel, { passive: false, signal: listenerSignal });
+window.addEventListener("touchstart", onJourneyTouchStart, { passive: true, signal: listenerSignal });
+window.addEventListener("touchmove", onJourneyTouchMove, { passive: false, signal: listenerSignal });
+window.addEventListener("touchend", onJourneyTouchEnd, { passive: true, signal: listenerSignal });
+window.addEventListener("touchcancel", onJourneyTouchEnd, { passive: true, signal: listenerSignal });
+window.addEventListener("keydown", onJourneyKeyDown, { signal: listenerSignal });
 window.addEventListener("click", onClick, { signal: listenerSignal });
 window.addEventListener("beforeunload", disposeExperience, { once: true, signal: listenerSignal });
 

@@ -228,6 +228,26 @@ export function createShell({ root, stages }) {
     distanceSummary.textContent = formatDistanceSummary(stages[index]);
   };
 
+  const setStageAccess = ({ highestUnlockedStage, reason = "" }) => {
+    const safeHighestUnlockedStage = Number.isFinite(highestUnlockedStage)
+      ? Math.min(stageButtons.length - 1, Math.max(0, Math.floor(highestUnlockedStage)))
+      : 0;
+    stageButtons.forEach((button, index) => {
+      const locked = index > safeHighestUnlockedStage;
+      button.disabled = locked;
+      button.setAttribute("aria-disabled", String(locked));
+      if (locked) {
+        const accessibleReason = String(reason).trim();
+        const label = button.textContent;
+        button.setAttribute("aria-label", accessibleReason ? `${label}. ${accessibleReason}` : label);
+        button.title = accessibleReason;
+      } else {
+        button.removeAttribute("aria-label");
+        button.removeAttribute("title");
+      }
+    });
+  };
+
   const toggleDistanceScale = () => {
     const isExpanded = distanceSummary.getAttribute("aria-expanded") === "true";
     const nextExpanded = !isExpanded;
@@ -306,6 +326,7 @@ export function createShell({ root, stages }) {
     enginePuzzleStatus,
     enginePuzzleClose,
     setActiveStage,
+    setStageAccess,
     dispose: () => distanceSummary.removeEventListener("click", toggleDistanceScale)
   });
 }

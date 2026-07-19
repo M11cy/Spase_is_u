@@ -365,7 +365,7 @@ body:not([data-stage="0"]) .reference-caption {
 }
 
 .topbar button:hover,
-.scale-rail button:hover {
+.scale-rail button:not(:disabled):hover {
   color: white;
   background: transparent;
 }
@@ -670,8 +670,8 @@ body[data-stage="1"].earth-ship-ready:not(.rocket-caught) .rocket-ship {
   transform: translateX(-50%) translateY(8px);
 }
 
-body[data-stage="6"]:not(.web-complete) .web-runner,
-body[data-stage="7"] .star-maker {
+body[data-stage="5"]:not(.web-complete) .web-runner,
+body[data-stage="6"] .star-maker {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(-50%) translateY(0);
@@ -689,7 +689,7 @@ body.final-star-lit .star-maker {
   background: rgb(255 255 255 / 0.1);
 }
 
-/* Cosmic-web flow puzzle (stage 6): rotate filament tiles to connect our galaxy
+/* Cosmic-web flow puzzle (stage 5): rotate filament tiles to connect our galaxy
    (source, left) to the far node (sink, right). JS builds the grid of tiles. */
 .web-flow {
   position: fixed;
@@ -702,7 +702,7 @@ body.final-star-lit .star-maker {
   transition: opacity 300ms ease;
 }
 
-body[data-stage="6"]:not(.web-complete) .web-flow {
+body[data-stage="5"]:not(.web-complete) .web-flow {
   opacity: 1;
   pointer-events: auto;
 }
@@ -798,7 +798,7 @@ body[data-stage="6"]:not(.web-complete) .web-flow {
   pointer-events: none;
 }
 
-body:not([data-stage="7"]) .personal-stars {
+body:not([data-stage="6"]) .personal-stars {
   display: none;
 }
 
@@ -898,6 +898,24 @@ body:not([data-stage="0"]) .intro {
 .scale-rail button.active {
   color: white;
   background: transparent;
+}
+
+.scale-rail button:disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(255 255 255 / 0.42);
+  cursor: not-allowed;
+  opacity: 0.34;
+  filter: saturate(0.25);
+}
+
+.scale-rail button:disabled::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
 }
 
 .distance-scale {
