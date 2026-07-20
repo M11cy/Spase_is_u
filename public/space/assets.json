@@ -58,5 +58,50 @@
     "avif": "/space/local-group.avif",
     "webp": "/space/local-group.webp",
     "fallback": "/space/local-group.jpg"
+  },
+  "/space/milky-way-photo-8k.jpg": {
+    "avif": "/space/milky-way-photo-8k.avif",
+    "webp": "/space/milky-way-photo-8k.webp",
+    "fallback": "/space/milky-way-photo-8k.jpg"
+  },
+  "/space/milky-way-photo-4k.jpg": {
+    "avif": "/space/milky-way-photo-4k.avif",
+    "webp": "/space/milky-way-photo-4k.webp",
+    "fallback": "/space/milky-way-photo-4k.jpg"
+  },
+  "/space/milky-way-photo-2k.jpg": {
+    "avif": "/space/milky-way-photo-2k.avif",
+    "webp": "/space/milky-way-photo-2k.webp",
+    "fallback": "/space/milky-way-photo-2k.jpg"
+  },
+  "/space/local-group-photo-8k.jpg": {
+    "avif": "/space/local-group-photo-8k.avif",
+    "webp": "/space/local-group-photo-8k.webp",
+    "fallback": "/space/local-group-photo-8k.jpg"
+  },
+  "/space/local-group-photo-4k.jpg": {
+    "avif": "/space/local-group-photo-4k.avif",
+    "webp": "/space/local-group-photo-4k.webp",
+    "fallback": "/space/local-group-photo-4k.jpg"
+  },
+  "/space/local-group-photo-2k.jpg": {
+    "avif": "/space/local-group-photo-2k.avif",
+    "webp": "/space/local-group-photo-2k.webp",
+    "fallback": "/space/local-group-photo-2k.jpg"
+  },
+  "/space/cosmic-web-photo-8k.jpg": {
+    "avif": "/space/cosmic-web-photo-8k.avif",
+    "webp": "/space/cosmic-web-photo-8k.webp",
+    "fallback": "/space/cosmic-web-photo-8k.jpg"
+  },
+  "/space/cosmic-web-photo-4k.jpg": {
+    "avif": "/space/cosmic-web-photo-4k.avif",
+    "webp": "/space/cosmic-web-photo-4k.webp",
+    "fallback": "/space/cosmic-web-photo-4k.jpg"
+  },
+  "/space/cosmic-web-photo-2k.jpg": {
+    "avif": "/space/cosmic-web-photo-2k.avif",
+    "webp": "/space/cosmic-web-photo-2k.webp",
+    "fallback": "/space/cosmic-web-photo-2k.jpg"
   }
 }

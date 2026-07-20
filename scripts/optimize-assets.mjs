@@ -15,7 +15,16 @@ const DEFAULT_SOURCES = Object.freeze([
   "sagittarius-a.jpg",
   "milky-way-realistic.jpg",
   "andromeda.jpg",
-  "local-group.jpg"
+  "local-group.jpg",
+  Object.freeze({ source: "milky-way-photo-8k.jpg", maxWidth: 7680 }),
+  Object.freeze({ source: "milky-way-photo-4k.jpg", maxWidth: 4096 }),
+  Object.freeze({ source: "milky-way-photo-2k.jpg", maxWidth: 2048 }),
+  Object.freeze({ source: "local-group-photo-8k.jpg", maxWidth: 7680 }),
+  Object.freeze({ source: "local-group-photo-4k.jpg", maxWidth: 4096 }),
+  Object.freeze({ source: "local-group-photo-2k.jpg", maxWidth: 2048 }),
+  Object.freeze({ source: "cosmic-web-photo-8k.jpg", maxWidth: 7680 }),
+  Object.freeze({ source: "cosmic-web-photo-4k.jpg", maxWidth: 4096 }),
+  Object.freeze({ source: "cosmic-web-photo-2k.jpg", maxWidth: 2048 })
 ]);
 
 const boundedQuality = (value, fallback) => (
