@@ -455,8 +455,8 @@ test("future stages stay locked across scroll inputs while backward travel stays
   await systemButton.dispatchEvent("click");
   await expectStage(page, 1);
 
-  await page.keyboard.press("Home");
-  await expectStage(page, 0);
+    await page.mouse.wheel(0, -100_000);
+    await expectStage(page, 0);
   await earthButton.click();
   await expectStage(page, 1);
 
