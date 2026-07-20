@@ -1,7 +1,7 @@
 ---
 title: Procedural Cosmic Tissue Correction Implementation Plan
 date: 2026-07-20
-status: ready
+status: completed
 tags:
   - project/cosmos
   - implementation/threejs
@@ -47,7 +47,7 @@ related:
 - Consumes: existing `createCosmicWebLayer(input)`, screenshot crop/grid calculation and current fresh PNG route.
 - Produces: discriminating RED gates for full-chord curvature, tissue contracts and final pixel density/color.
 
-- [ ] **Step 1: Add the short-edge and tissue contract tests**
+- [x] **Step 1: Add the short-edge and tissue contract tests**
 
 Add helpers that measure a rendered curve's maximum distance from its direct chord, then add a seed `13` high-tier regression. Use exact object names `cosmic-web-tissue-far`, `cosmic-web-tissue-mid`, `cosmic-web-tissue-near` and metadata key `root.userData.structure.tissue`:
 
@@ -93,7 +93,7 @@ it.each([
 });
 ```
 
-- [ ] **Step 2: Add screenshot darkness and warm-tissue metrics**
+- [x] **Step 2: Add screenshot darkness and warm-tissue metrics**
 
 Inside `screenshotMetrics`, count exact central-crop pixels:
 
@@ -121,13 +121,13 @@ maximumNearBlackRatio: 0.72,
 minimumWarmMagentaOrangeRatio: 0.07
 ```
 
-- [ ] **Step 3: Run RED unit tests**
+- [x] **Step 3: Run RED unit tests**
 
 Run: `npm.cmd test -- src/scene/layers/deep-space-layers.test.js -t "short-edge|procedural tissue"`
 
 Expected: FAIL because seed `13` uses `9 / 4` hard bend minima and there are zero tissue layers/metadata.
 
-- [ ] **Step 4: Run the honest pixel RED**
+- [x] **Step 4: Run the honest pixel RED**
 
 Run: `npm.cmd run test:e2e -- --grep "each real game victory"`
 
@@ -146,7 +146,7 @@ Expected: FAIL on the current fresh Cosmic Web with near-black about `0.9273 / 0
 - `setPresence(number)` clamps through the caller-provided normalized presence contract.
 - `setParallax({ x, y })` applies profile-specific local offsets; it does not modify color/uniform intensity.
 
-- [ ] **Step 1: Create immutable tier profiles and input validation**
+- [x] **Step 1: Create immutable tier profiles and input validation**
 
 Use exact tier selection and bounded depths:
 
@@ -166,7 +166,7 @@ const TIER_OPACITY_SCALE = Object.freeze({ high: 1, medium: 1.55, economy: 2.35 
 
 `uOpacity` is `profile.opacity * TIER_OPACITY_SCALE[tier]`, keeping total tissue exposure approximately stable as draw count falls. Require `Group`, `PlaneGeometry`, `Mesh`, `ShaderMaterial`, `Color`, and `Vector2`; reject unsupported tiers, unsafe seeds and invalid positive volume dimensions.
 
-- [ ] **Step 2: Implement the fixed-cost procedural shaders**
+- [x] **Step 2: Implement the fixed-cost procedural shaders**
 
 The vertex shader only passes UV. The fragment shader must contain named `fbm`, `cellularRidge`, `fineDust` and palette sentinels so tests distinguish a real tissue shader from a flat color:
 
@@ -205,7 +205,7 @@ float cellularRidge(vec2 point) {
 
 In `main`, domain-warp `vUv * vec2(6.4, 3.8) + uUvOffset`, combine ridge/body/veil plus high-frequency deterministic dust, and mix exact normalized colors derived from `0x8b5cf6`, `0xd946ef`, `0xf472b6`, `0xf59e42`. Use `uPresence * uOpacity`, edge fade, additive transparency, no time uniform and no exposure/global renderer dependency.
 
-- [ ] **Step 3: Create depth-separated meshes and deterministic metadata**
+- [x] **Step 3: Create depth-separated meshes and deterministic metadata**
 
 Create one shared `PlaneGeometry(volume.width, volume.height)`, one material per selected profile and a group named `cosmic-web-tissue`. Mesh names are `cosmic-web-tissue-${profile}`; positions are `(0, 0, profile.depth)`, render order is `2`, and no bloom layer is enabled. Each deterministic layer seed is `((seed >>> 0) ^ profile.salt) >>> 0`; seeded offsets are generated once and never animated. Metadata is frozen plain data:
 
@@ -220,11 +220,11 @@ Object.freeze({
 });
 ```
 
-- [ ] **Step 4: Implement presence, parallax and idempotent disposal**
+- [x] **Step 4: Implement presence, parallax and idempotent disposal**
 
 `setPresence` updates each `uPresence`; `setParallax` sets local x/y to `offset * profile.parallax`; `dispose` calls `disposeObjectTree(root)` once. The shared geometry must be disposed once even when three meshes reference it.
 
-- [ ] **Step 5: Run the tissue unit tests**
+- [x] **Step 5: Run the tissue unit tests**
 
 Run: `npm.cmd test -- src/scene/layers/deep-space-layers.test.js -t "procedural tissue"`
 
@@ -242,7 +242,7 @@ Expected: PASS for deterministic uniforms/metadata, tier counts, base-pass flags
 - Consumes: `createCosmicTissue({ THREE, tier, seed, volume })`.
 - Preserves: frozen public `{ root, interactive, graph, setPresence, updateParallax, dispose }` from `createCosmicWebLayer`.
 
-- [ ] **Step 1: Cap cubic control magnitudes by full chord length**
+- [x] **Step 1: Cap cubic control magnitudes by full chord length**
 
 Replace hard unbounded minima with full-chord caps while retaining organic meaningful bends:
 
@@ -263,11 +263,11 @@ const verticalMagnitude = Math.min(
 );
 ```
 
-- [ ] **Step 2: Compose tissue behind the graph foreground**
+- [x] **Step 2: Compose tissue behind the graph foreground**
 
 Create tissue after graph construction; add `tissue: tissue.metadata` to frozen `root.userData.structure`; add `tissue.root` before the existing five render objects. Keep `depthLayers: 3`, graph arrays and all point counts unchanged.
 
-- [ ] **Step 3: Delegate lifecycle without double disposal**
+- [x] **Step 3: Delegate lifecycle without double disposal**
 
 In `setPresence`, call `tissue.setPresence(presence)` before existing material opacity scaling. In `updateParallax`, keep the current returned/root offset and call `tissue.setParallax(offset)`. In `dispose`, call `tissue.dispose()` first so its cleared group is not re-disposed by `disposeObjectTree(root)`.
 
@@ -284,17 +284,17 @@ const world = new THREE.Vector3(
 
 Keep the same published-volume assertions against `world.x`, `world.y`, `world.z`; this strengthens the existing test for every mesh/points/line object rather than special-casing tissue.
 
-- [ ] **Step 4: Reduce direct graph-line dominance without hiding topology**
+- [x] **Step 4: Reduce direct graph-line dominance without hiding topology**
 
 Set `FILAMENT_OPACITY` to high `0.48`, medium `0.44`, economy `0.40`; retain particle/node/hot-node budgets and sizes for the first pixel pass. Further tuning may reduce line opacity but may not increase point budgets, change global exposure or weaken gates.
 
-- [ ] **Step 5: Run all Cosmic Web unit contracts**
+- [x] **Step 5: Run all Cosmic Web unit contracts**
 
 Run: `npm.cmd test -- src/scene/layers/deep-space-layers.test.js`
 
 Expected: all graph budget, seed sweep, curved sampler, tissue, bounds, presence/parallax, performance and disposal tests PASS.
 
-- [ ] **Step 6: Commit the tested implementation**
+- [x] **Step 6: Commit the tested implementation**
 
 ```text
 git add src/scene/layers/cosmic-tissue.js src/scene/layers/cosmic-web.js src/scene/layers/deep-space-layers.test.js tests/progression.e2e.spec.js
@@ -313,25 +313,25 @@ git commit -m "feat: add procedural cosmic tissue"
 - Consumes: honest public-UI victory route and six `.superpowers/sdd/task-7-artifacts/*.png` files.
 - Produces: root-reviewed original pixels, complete gates and SHA-bearing Obsidian evidence.
 
-- [ ] **Step 1: Run the honest-victory GREEN**
+- [x] **Step 1: Run the honest-victory GREEN**
 
 Run: `npm.cmd run test:e2e -- --grep "each real game victory"`
 
 Expected: PASS existing luminous/purple/grid/mobile gates plus near-black `<=0.65 / <=0.72` and warm `>=0.08 / >=0.07`; all six screenshots are freshly rewritten.
 
-- [ ] **Step 2: Inspect all six original PNGs**
+- [x] **Step 2: Inspect all six original PNGs**
 
 Reject if Cosmic Web is still a regular lattice, if tissue is a flat wash/fullscreen rectangle, if warm variation is absent, if depth layers do not read volumetrically, or if Galaxy/Local/UI changed. Numeric thresholds never override visual rejection.
 
-- [ ] **Step 3: Obtain independent reviews**
+- [x] **Step 3: Obtain independent reviews**
 
 Request task-scoped shader/security/lifecycle review and root original-pixel review. Fix every Critical/Important finding and repeat affected tests/screenshots; record accepted visual Minor findings honestly.
 
-- [ ] **Step 4: Run the complete final gate**
+- [x] **Step 4: Run the complete final gate**
 
 Run `npm.cmd test`, `npm.cmd run test:coverage`, `npm.cmd run build`, `npm.cmd run test:e2e`, `npm.cmd audit --audit-level=high`, `git diff --check`, confirm port `4173` is clear and the tracked worktree is clean after commits.
 
-- [ ] **Step 5: Record and commit evidence**
+- [x] **Step 5: Record and commit evidence**
 
 Append Task 5C RED/GREEN values, tier/lifecycle contracts, original-pixel verdict, full gate totals, known chunk advisory and exact SHAs to both Obsidian evidence files. Commit tracked records:
 
@@ -339,3 +339,37 @@ Append Task 5C RED/GREEN values, tier/lifecycle contracts, original-pixel verdic
 git add docs/dev-log.md docs/superpowers/plans/2026-07-20-procedural-cosmic-tissue.md
 git commit -m "docs: record procedural cosmic tissue acceptance"
 ```
+
+---
+
+## Completion evidence
+
+> [!success] Root original-pixel verdict
+> Fresh `1920 x 1080` desktop and `390 x 844` mobile Cosmic Web frames are **ACCEPTED**. The final field reads as dense fine violet-magenta tissue instead of coarse cracked glass; graph nodes and curved foreground strands remain legible, negative space remains, and the compact mobile rail is clean. Galaxy and Local Group desktop/mobile frames remain accepted and unchanged in spirit.
+
+### RED -> GREEN audit
+
+- Initial focused RED: `4` failures. Seed `13` short-edge bend was `6.35349460965352 > 5.229806032267265`; high/medium/economy tissue groups and metadata were absent.
+- Initial honest pixel RED: desktop near-black `0.9274802782516864 > 0.65`; warm ratio `0.03516578633839696 < 0.08`.
+- Flat-wash candidate was rejected despite passing hard gates: desktop/mobile near-black `0 / 0`, warm `0.98942 / 0.98485`.
+- Fine-cell morphology increased the effective cellular field from about `26 x 16` to about `78 x 46`, retained one four-octave FBM call, and kept cellular ridge plus deterministic fine dust.
+- Post-parallax bounds RED: high/medium `y=379.99899999999997 > 379.501`; economy `x=659.999 > 659.501`. Padding `0.001 -> 0.5` gave focused GREEN `3/3` across high/medium/economy at pointer extrema using `matrixWorld`.
+- Final accepted pixels: desktop near-black `0.6479344173541359`, warm `0.21370170657246793`; mobile near-black `0.6022631578947368`, warm `0.21676315789473685`. These pass the hard gates; the slightly elevated warm ratios are an accepted visual Minor.
+- The Web helper now observes public success as either transient `.solved` or the exact active/enabled next-level tile count. It preserves every correct public click, exact `9 -> 12 -> 16` structure, default polling timeout and wrong-click rejection.
+
+### Final verification
+
+- Implementation commit: `12ce002190ec720da2ee2e455f468c404bb53afa` (`feat: add procedural cosmic tissue`).
+- Unit: `186/186`, `12/12` files.
+- Coverage overall: statements `88.62%`, branches `77.93%`, functions `86.09%`, lines `90.57%`; scene/layers aggregate `96.53% / 87.31% / 97.10% / 97.67%`.
+- Build: PASS, `50` modules; known production chunk advisory `1009.84 kB` remains non-blocking.
+- Audit: `0 vulnerabilities`; `git diff --check`: clean.
+- Full E2E: first run `4/5` because one test opened a blank page before app startup; its isolated rerun passed `1/1` in `29.2s`. Unchanged full rerun passed `5/5` in `3.5m`, including victory/pixels and zero console/WebGL errors.
+- Independent Task5C spec and quality reviews: **Approved**, Critical `0`, Important `0`. Accepted code Minors: the public tissue factory assumes the current fixed z-volume, and the extrema test samples two separable diagonals rather than all four corners.
+
+![[task-7-artifacts/galaxy.png]]
+![[task-7-artifacts/local-group.png]]
+![[task-7-artifacts/cosmic-web.png]]
+![[task-7-artifacts/galaxy-mobile.png]]
+![[task-7-artifacts/local-group-mobile.png]]
+![[task-7-artifacts/cosmic-web-mobile.png]]

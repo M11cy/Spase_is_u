@@ -410,5 +410,36 @@ Design amendment commit: `742d96b`. Follow-up implementation commit: `ff4de20`.
 
 Коммиты: design/plan `878fe95`; organic geometry `aa7c05a`; safe a11y text `95fd3fa`; scroll barrier race `28ac228`.
 
+## Task 5C - procedural fine-cell Cosmic Web tissue
+
+Related: [[2026-07-19-deep-space-visual-overhaul-design]], [[2026-07-20-procedural-cosmic-tissue]].
+
+> [!success] Superseding visual verdict
+> Root original-pixel review accepts Cosmic Web desktop and mobile. The final one-FBM, cellular-ridge, fine-dust field reads as fine violet-magenta cosmic tissue rather than a coarse lattice or flat wash. Galaxy and Local Group desktop/mobile remain accepted. Critical `0`, Important `0`.
+
+### Evidence
+
+- RED before production: short-edge bend `6.35349460965352 > 5.229806032267265`; tissue absent in all three tiers; desktop near-black `0.9274802782516864`, warm `0.03516578633839696`.
+- Final tissue tiers are exactly high/medium/economy `3 / 2 / 1`, with deterministic offsets, depths `-300 / -235 / -170`, additive base-pass materials and no time/exposure uniform.
+- Final accepted desktop: near-black `0.6479344173541359`, warm `0.21370170657246793`. Mobile: `0.6022631578947368 / 0.21676315789473685`.
+- Post-parallax bounds used a real RED (`379.999 > 379.501`, `659.999 > 659.501`) and GREEN `3/3` after a `0.5` inset, checking transformed vertices through `matrixWorld`.
+- Shared `PlaneGeometry` and materials dispose once; repeated layer disposal is idempotent. Reduced motion disables movement only.
+- Public Web helper accepts only `.solved` or the exact active/enabled next-level `12/16` state through default polling; timeouts and puzzle clicks were not weakened.
+
+### Gates and reviews
+
+- Implementation: `12ce002190ec720da2ee2e455f468c404bb53afa`.
+- Unit `186/186`; overall coverage `88.62 / 77.93 / 86.09 / 90.57`; scene/layers `96.53 / 87.31 / 97.10 / 97.67`.
+- Build PASS (`50` modules), audit `0 vulnerabilities`, diff-check clean.
+- Full E2E startup audit: first run `4/5` had one blank-page startup flake; isolated test passed `1/1`, then unchanged full suite passed `5/5` in `3.5m`.
+- Independent spec and quality reviews: Approved, no Critical/Important. Accepted Minors: fixed-z public factory assumption, two diagonal extrema instead of four, subtle warm/orange accents and some geometric microcells on close inspection.
+
+![[task-7-artifacts/galaxy.png]]
+![[task-7-artifacts/local-group.png]]
+![[task-7-artifacts/cosmic-web.png]]
+![[task-7-artifacts/galaxy-mobile.png]]
+![[task-7-artifacts/local-group-mobile.png]]
+![[task-7-artifacts/cosmic-web-mobile.png]]
+
 > [!warning] Остаточный риск
 > Production bundle остаётся больше `500 kB`. Несколько дальних слабых Cosmic Web дуг всё ещё могут читаться как граф, но корневая pixel-проверка признала это неблокирующим Minor после существенного удаления straight-chord доминирования.
