@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { createQualityProfile } from "../../core/quality-profile.js";
-import { STAGES } from "../../data/cosmos.js";
+import { ANNOTATIONS, STAGES } from "../../data/cosmos.js";
 import { BLOOM_SCENE_LAYER } from "../deep-space-postprocessing.js";
 import { createCosmicTissue } from "./cosmic-tissue.js";
 import { createCosmicWebLayer } from "./cosmic-web.js";
@@ -11,44 +11,13 @@ import { createMilkyWayLayer } from "./milky-way.js";
 
 const createLayer = (overrides = {}) => createMilkyWayLayer({
   THREE,
-  annotations: [],
+  texture: new THREE.Texture(),
+  annotations: ANNOTATIONS.galaxy,
   quality: { tier: "high", galaxyPoints: 900 },
-  glowTexture: null,
-  createMarker: () => new THREE.Sprite(),
+  createMarker: () => new THREE.Sprite(new THREE.SpriteMaterial({ opacity: 0.76 })),
   reducedMotion: false,
   ...overrides
 });
-
-const createSettledMilkyWayCamera = (aspect = 16 / 9) => {
-  const stage = STAGES.find(({ id }) => id === "milky-way");
-  const camera = new THREE.PerspectiveCamera(stage.camera.fov, aspect, 0.1, 2000);
-  camera.position.fromArray(stage.camera.position);
-  camera.lookAt(new THREE.Vector3(...stage.camera.target));
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld(true);
-  return camera;
-};
-
-const measureFaceOnInclination = (root, camera) => {
-  root.updateMatrixWorld(true);
-  const discNormal = new THREE.Vector3(0, 0, 1).transformDirection(root.matrixWorld);
-  const rootPosition = root.getWorldPosition(new THREE.Vector3());
-  const viewDirection = camera.position.clone().sub(rootPosition).normalize();
-  const alignment = Math.min(1, Math.abs(discNormal.dot(viewDirection)));
-  return THREE.MathUtils.radToDeg(Math.acos(alignment));
-};
-
-const measureProjectedRingWidth = ({ root, camera, radius, samples = 720 }) => {
-  root.updateMatrixWorld(true);
-  const projectedX = Array.from({ length: samples }, (_, index) => {
-    const angle = index / samples * Math.PI * 2;
-    const point = new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
-    root.localToWorld(point);
-    point.project(camera);
-    return point.x;
-  });
-  return (Math.max(...projectedX) - Math.min(...projectedX)) / 2;
-};
 
 const createSettledStageCamera = (stageId, aspect = 16 / 9) => {
   const stage = STAGES.find(({ id }) => id === stageId);
@@ -87,553 +56,345 @@ const measureProjectedGraphCoverage = ({ graph, camera, columns = 12, rows = 8 }
   return edgesByCell.filter((edges) => edges.size >= 2).length / edgesByCell.length;
 };
 
+const MILKY_WAY_MARKER_POSITIONS = Object.freeze({
+  "galactic-center": Object.freeze([0, 0, 1]),
+  "orion-arm": Object.freeze([54.6, -8.775, 1]),
+  "perseus-arm": Object.freeze([-89.7, 10.96875, 1]),
+  "galactic-halo": Object.freeze([11.7, 70.2, 1])
+});
+
+const expectFrozenLayerContract = (layer) => {
+  expect(Object.keys(layer)).toEqual([
+    "root",
+    "interactive",
+    "setPresence",
+    "updateParallax",
+    "dispose"
+  ]);
+  expect(Object.isFrozen(layer)).toBe(true);
+  expect(Object.isFrozen(layer.interactive)).toBe(true);
+};
+
 describe("createMilkyWayLayer", () => {
-  it("presents a large four-arm disc at an actual twenty-degree face-on inclination", () => {
-    const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
-    const camera = createSettledMilkyWayCamera();
-    const actualInclination = measureFaceOnInclination(layer.root, camera);
+  it("renders one texture-backed plane and removes every procedural galaxy object", () => {
+    const texture = new THREE.Texture();
+    const layer = createLayer({ texture });
+    const photo = layer.root.getObjectByName("milky-way-photo");
 
-    expect(layer.root.userData.composition).toEqual(expect.objectContaining({
-      inclinationDegrees: 20,
-      diameter: 210,
-      armCount: 4,
-      dustLanes: 2
-    }));
-    expect(Object.isFrozen(layer.root.userData.composition)).toBe(true);
-    expect(actualInclination).toBeGreaterThanOrEqual(18);
-    expect(actualInclination).toBeLessThanOrEqual(22);
-    expect(layer.root.rotation.z).toBeCloseTo(-0.16, 4);
-    expect(layer.root.scale.x).toBeGreaterThanOrEqual(1.5);
-
-    layer.dispose();
-  });
-
-  it.each([
-    ["high", { width: 1920, height: 1080, dpr: 2, cores: 12 }, 9000],
-    ["medium", { width: 1024, height: 768, dpr: 2, cores: 8 }, 5600],
-    ["economy", { width: 390, height: 844, dpr: 3, cores: 12 }, 2800]
-  ])("uses the exact %s Milky Way point budget", (tier, viewport, galaxyPoints) => {
-    const profile = createQualityProfile({ ...viewport, reducedMotion: false });
-    const layer = createLayer({ quality: profile });
-
-    expect(profile).toMatchObject({ tier, galaxyPoints });
-    expect(layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").count)
-      .toBe(galaxyPoints);
-
-    layer.dispose();
-  });
-
-  it("projects the luminous arm envelope to roughly seventy percent of the settled desktop frame", () => {
-    const layer = createLayer({ quality: { tier: "high", galaxyPoints: 9000 } });
-    const desktopCamera = createSettledMilkyWayCamera();
-    const mobileCamera = createSettledMilkyWayCamera(390 / 844);
-    const discRadius = layer.root.userData.composition.diameter / 2;
-    const luminousArmEnvelope = discRadius + 6;
-    const sparseHaloEnvelope = 118;
-    const mobileInnerStructure = 32;
-    const armOccupancy = measureProjectedRingWidth({
-      root: layer.root,
-      camera: desktopCamera,
-      radius: luminousArmEnvelope
+    expectFrozenLayerContract(layer);
+    expect(photo.material.map).toBe(texture);
+    expect(photo.geometry.parameters).toMatchObject({ width: 390, height: 219.375 });
+    expect(photo.material).toMatchObject({
+      opacity: 1,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.NormalBlending
     });
-    const haloOccupancy = measureProjectedRingWidth({
-      root: layer.root,
-      camera: desktopCamera,
-      radius: sparseHaloEnvelope
-    });
-    const mobileInnerOccupancy = measureProjectedRingWidth({
-      root: layer.root,
-      camera: mobileCamera,
-      radius: mobileInnerStructure
-    });
-    const routeCameraZ = STAGES.map(({ camera }) => camera.position[2]);
-    const deepSpaceStart = STAGES.findIndex(({ id }) => id === "solar-system");
-    const deepSpaceCameraDistances = STAGES.slice(deepSpaceStart).map(({ camera }) => (
-      Math.hypot(...camera.position.map((value, index) => value - camera.target[index]))
-    ));
-
-    expect(armOccupancy).toBeGreaterThanOrEqual(0.65);
-    expect(armOccupancy).toBeLessThanOrEqual(0.75);
-    expect(haloOccupancy).toBeLessThanOrEqual(0.82);
-    expect(mobileInnerOccupancy).toBeGreaterThanOrEqual(0.65);
-    expect(mobileInnerOccupancy).toBeLessThanOrEqual(0.95);
-    expect(routeCameraZ.every((depth, index) => index === 0 || depth > routeCameraZ[index - 1]))
-      .toBe(true);
-    expect(deepSpaceCameraDistances.every((distance, index) => (
-      index === 0 || distance > deepSpaceCameraDistances[index - 1]
-    )))
-      .toBe(true);
-
-    layer.dispose();
-  });
-
-  it("creates a layered volumetric galaxy using the quality point count", () => {
-    const layer = createLayer({ quality: { tier: "economy", galaxyPoints: 900 } });
-
-    expect(layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").count).toBe(900);
-    expect(layer.root.getObjectByName("milky-way-dust-lane-1")).toBeTruthy();
-    expect(layer.root.getObjectByName("milky-way-halo")).toBeTruthy();
-    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
-
-    layer.dispose();
-  });
-
-  it("uses the shared high-quality parallax response", () => {
-    const layer = createLayer();
-    const initialZ = layer.root.position.z;
-    const initialRotation = layer.root.rotation.clone();
-
-    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
-    expect(layer.root.position.z).toBe(initialZ);
-    expect(layer.root.rotation.toArray()).toEqual(initialRotation.toArray());
-
-    layer.dispose();
-  });
-
-  it("keeps stars, dust, core, and halo as independently faded transparent 3D layers", () => {
-    const layer = createLayer();
-    const stars = layer.root.getObjectByName("milky-way-stars");
-    const dust = layer.root.getObjectByName("milky-way-dust-lane-1");
-    const core = layer.root.getObjectByName("milky-way-core");
-    const halo = layer.root.getObjectByName("milky-way-halo");
-
+    expect(photo.renderOrder).toBe(2);
     expect(layer.root.position.z).toBe(-80);
-    expect(core).toBeTruthy();
-    expect(stars.material.blending).toBe(THREE.AdditiveBlending);
-    expect(dust.material.blending).toBe(THREE.NormalBlending);
-    expect([stars, dust, core, halo].every(({ material }) => material.transparent && !material.depthWrite)).toBe(true);
+    expect(layer.root.getObjectByName("milky-way-stars")).toBeUndefined();
+    expect(layer.root.getObjectByName("milky-way-core")).toBeUndefined();
+    expect(layer.root.getObjectByName("milky-way-halo")).toBeUndefined();
+    expect(layer.root.children.filter(({ isMesh }) => isMesh)).toHaveLength(1);
+
+    layer.dispose();
+  });
+
+  it("preserves the four annotation records and remaps their markers to photo features", () => {
+    const layer = createLayer();
+
+    expect(layer.interactive.map(({ userData }) => userData.annotation.id)).toEqual([
+      "galactic-center",
+      "orion-arm",
+      "perseus-arm",
+      "galactic-halo"
+    ]);
+    expect(layer.interactive).toHaveLength(ANNOTATIONS.galaxy.length);
+    layer.interactive.forEach((marker, index) => {
+      const source = ANNOTATIONS.galaxy[index];
+      const annotation = marker.userData.annotation;
+
+      expect(annotation).toMatchObject(source);
+      expect(annotation.object3D).toBe(marker);
+      expect(Object.isFrozen(annotation)).toBe(true);
+      expect(marker.position.toArray()).toEqual(MILKY_WAY_MARKER_POSITIONS[source.id]);
+      expect(marker.userData.stage).toBe(source.stage);
+      expect(marker.userData.baseOpacity).toBe(0.76);
+    });
+
+    layer.dispose();
+  });
+
+  it("fades the photograph and markers and applies the 0.18 parallax factor", () => {
+    const layer = createLayer();
+    const photo = layer.root.getObjectByName("milky-way-photo");
+
     layer.setPresence(0.5);
-    expect(stars.material.opacity).toBeCloseTo(0.41);
-
-    layer.dispose();
-  });
-
-  it("generates deterministic logarithmic-arm positions and keeps annotations outside the bright core", () => {
-    const annotation = {
-      id: "galactic-center",
-      stage: 3,
-      position: [-6, 1, -82]
-    };
-    const first = createLayer({ annotations: [annotation] });
-    const second = createLayer({ annotations: [annotation] });
-
-    expect(first.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array)
-      .toEqual(second.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array);
-    expect(first.interactive).toHaveLength(1);
-    expect(first.interactive[0].userData.annotation).toMatchObject(annotation);
-    expect(Math.hypot(first.interactive[0].position.x, first.interactive[0].position.y))
-      .toBeGreaterThanOrEqual(28);
-
-    first.dispose();
-    second.dispose();
-  });
-
-  it("forms four separated face-on logarithmic arm bands with outward radial progression", () => {
-    const layer = createLayer();
-    const positions = layer.root.getObjectByName("milky-way-stars").geometry.getAttribute("position").array;
-    const { armCount, coordinatePlane, pattern } = layer.root.userData.armStructure;
-    const pointCount = positions.length / 3;
-    const radialDistance = (index) => {
-      const offset = index * 3;
-      return Math.hypot(positions[offset], positions[offset + 1]);
-    };
-    const firstAngles = Array.from({ length: armCount }, (_, arm) => {
-      const offset = arm * 3;
-      return Math.atan2(positions[offset + 1], positions[offset]);
-    }).sort((left, right) => left - right);
-    const angularGaps = firstAngles.map((angle, index) => (
-      (firstAngles[(index + 1) % armCount] - angle + Math.PI * 2) % (Math.PI * 2)
-    ));
-
-    expect(Object.isFrozen(layer.root.userData.armStructure)).toBe(true);
-    expect(pattern).toBe("logarithmic");
-    expect(coordinatePlane).toBe("xy");
-    expect(armCount).toBe(4);
-    expect(angularGaps.every((gap) => gap > 1 && gap < 2.1)).toBe(true);
-    expect(Array.from({ length: armCount }, (_, arm) => (
-      radialDistance(pointCount - armCount + arm) > radialDistance(arm) * 8
-    )).every(Boolean)).toBe(true);
-
-    layer.dispose();
-  });
-
-  it("breaks luminous arms with two dark offset dust lanes and a volumetric halo", () => {
-    const layer = createLayer();
-    const dustLanes = [1, 2].map((index) => (
-      layer.root.getObjectByName(`milky-way-dust-lane-${index}`)
-    ));
-    const stars = layer.root.getObjectByName("milky-way-stars");
-    const halo = layer.root.getObjectByName("milky-way-halo");
-    const haloPositions = halo.geometry.getAttribute("position");
-    const distinctHaloDepths = new Set(Array.from(haloPositions.array)
-      .filter((_, index) => index % 3 === 2)
-      .map((value) => Math.round(value)));
-
-    expect(dustLanes.every(Boolean)).toBe(true);
-    expect(dustLanes.every(({ material, renderOrder }) => (
-      material.blending === THREE.NormalBlending
-      && material.transparent
-      && material.opacity >= 0.7
-      && renderOrder > stars.renderOrder
-    ))).toBe(true);
-    expect(dustLanes[0].geometry.getAttribute("position").array)
-      .not.toEqual(dustLanes[1].geometry.getAttribute("position").array);
-    expect(halo.isPoints).toBe(true);
-    expect(distinctHaloDepths.size).toBeGreaterThan(12);
-
-    layer.dispose();
-  });
-
-  it("selectively blooms luminous stars and the warm core while preserving the base layer", () => {
-    const layer = createLayer();
-    const stars = layer.root.getObjectByName("milky-way-stars");
-    const core = layer.root.getObjectByName("milky-way-core");
-    const halo = layer.root.getObjectByName("milky-way-halo");
-    const dust = layer.root.getObjectByName("milky-way-dust-lane-1");
-
-    expect(core.material.color.getHex()).toBe(0xffc878);
-    expect([stars, core].every(({ layers }) => (
-      layers.isEnabled(0) && layers.isEnabled(BLOOM_SCENE_LAYER)
-    ))).toBe(true);
-    expect([halo, dust].every(({ layers }) => (
-      layers.isEnabled(0) && !layers.isEnabled(BLOOM_SCENE_LAYER)
-    ))).toBe(true);
-
-    layer.dispose();
-  });
-
-  it.each([
-    undefined,
-    null,
-    {},
-    { tier: "high", galaxyPoints: 0 },
-    { tier: "high", galaxyPoints: 1.5 }
-  ])("rejects invalid quality input %j", (quality) => {
-    expect(() => createLayer({ quality })).toThrow(TypeError);
-  });
-
-  it("rejects an absent layer contract", () => {
-    expect(() => createMilkyWayLayer())
-      .toThrow("Milky Way layer requires a compatible THREE namespace");
-  });
-
-  it.each([
-    undefined,
-    null,
-    {},
-    { Group: THREE.Group },
-    { BufferGeometry: THREE.BufferGeometry }
-  ])("rejects an incomplete THREE namespace %j", (incompleteThree) => {
-    expect(() => createLayer({ THREE: incompleteThree })).toThrow(TypeError);
-  });
-
-  it.each([undefined, null, {}, "annotations"])("rejects invalid annotations %j", (annotations) => {
-    expect(() => createLayer({ annotations })).toThrow(TypeError);
-  });
-
-  it.each([undefined, null, "marker"])("rejects invalid marker factory %j", (createMarker) => {
-    expect(() => createLayer({ createMarker })).toThrow(TypeError);
-  });
-
-  it.each([undefined, null, "false"])("rejects invalid reduced-motion preference %j", (reducedMotion) => {
-    expect(() => createLayer({ reducedMotion })).toThrow(TypeError);
-  });
-
-  it("fails closed by skipping malformed annotations and marker results", () => {
-    const layer = createLayer({
-      annotations: [null, { position: [0, 0] }, { position: [0, 0, -80] }],
-      createMarker: () => null
-    });
-
-    expect(layer.interactive).toHaveLength(0);
-
-    layer.dispose();
-  });
-
-  it("projects a central annotation and tolerates a material-less marker", () => {
-    const marker = new THREE.Object3D();
-    const layer = createLayer({
-      annotations: [{ id: "origin", stage: 3, position: [0, 0, -80] }],
-      createMarker: () => marker
-    });
-
-    expect(layer.interactive).toEqual([marker]);
-    expect(marker.position.x).toBeCloseTo(15);
-    expect(marker.position.y).toBeCloseTo(-Math.sqrt(675));
-    expect(marker.position.z).toBe(0);
-    expect(marker.userData.baseOpacity).toBe(1);
-    expect(() => layer.setPresence(0.5)).not.toThrow();
     expect(layer.root.visible).toBe(true);
+    expect(photo.material.opacity).toBe(0.5);
+    expect(layer.interactive.every(({ material }) => material.opacity === 0.38)).toBe(true);
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0.288, y: -0.198 });
+    expect(layer.root.position.z).toBe(-80);
 
-    layer.dispose();
-  });
-
-  it("fails closed for invalid presence and parallax input", () => {
-    const layer = createLayer();
-
-    layer.setPresence("visible");
+    layer.setPresence(Number.NaN);
     expect(layer.root.visible).toBe(false);
+    expect(photo.material.opacity).toBe(0);
     expect(layer.updateParallax({ x: 1, y: "-1" })).toEqual({ x: 0, y: 0 });
-    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
 
     layer.dispose();
   });
 
-  it("disposes the resource tree only once", () => {
-    const layer = createLayer();
-    const stars = layer.root.getObjectByName("milky-way-stars");
-    const disposeGeometry = vi.spyOn(stars.geometry, "dispose");
-    const disposeMaterial = vi.spyOn(stars.material, "dispose");
+  it.each([
+    [{ tier: "high" }, false, { x: 0.288, y: -0.198 }],
+    [{ tier: "medium" }, false, { x: 0.1584, y: -0.1089 }],
+    [{ tier: "economy" }, false, { x: 0, y: 0 }],
+    [{ tier: "high" }, true, { x: 0, y: 0 }]
+  ])("resolves quality and reduced-motion parallax for %j", (quality, reducedMotion, expected) => {
+    const layer = createLayer({ quality, reducedMotion });
 
-    layer.setPresence(0.4);
-    const opacityBeforeDispose = stars.material.opacity;
+    const actual = layer.updateParallax({ x: 1, y: -1 });
+    expect(actual.x).toBeCloseTo(expected.x, 8);
+    expect(actual.y).toBeCloseTo(expected.y, 8);
+
+    layer.dispose();
+  });
+
+  it.each([
+    { THREE: null },
+    { texture: null },
+    { texture: {} },
+    { annotations: null },
+    { quality: null },
+    { quality: { tier: "ultra" } },
+    { createMarker: null },
+    { reducedMotion: null }
+  ])("rejects invalid photographic boundary input %j", (overrides) => {
+    expect(() => createLayer(overrides)).toThrow(TypeError);
+  });
+
+  it("skips malformed annotations and marker results without mutating supplied records", () => {
+    const valid = Object.freeze({ id: "valid", stage: 3, position: [1, 2, -80] });
+    const annotations = Object.freeze([null, { position: [0, 0] }, valid]);
+    const layer = createLayer({
+      annotations,
+      createMarker: ({ id } = {}) => id === "valid"
+        ? new THREE.Object3D()
+        : null
+    });
+
+    expect(layer.interactive).toHaveLength(1);
+    expect(layer.interactive[0].userData.annotation).toMatchObject(valid);
+    expect(layer.interactive[0].userData.baseOpacity).toBe(1);
+    expect(annotations).toEqual([null, { position: [0, 0] }, valid]);
+
+    layer.dispose();
+  });
+
+  it("disposes owned photo and marker materials once without disposing the texture", () => {
+    const texture = new THREE.Texture();
+    const layer = createLayer({ texture });
+    const photo = layer.root.getObjectByName("milky-way-photo");
+    const geometryDispose = vi.spyOn(photo.geometry, "dispose");
+    const materialDispose = vi.spyOn(photo.material, "dispose");
+    const markerDisposes = layer.interactive.map(({ material }) => vi.spyOn(material, "dispose"));
+    const textureDispose = vi.spyOn(texture, "dispose");
 
     layer.dispose();
     layer.setPresence(0.9);
     layer.dispose();
 
-    expect(disposeGeometry).toHaveBeenCalledOnce();
-    expect(disposeMaterial).toHaveBeenCalledOnce();
-    expect(stars.material.opacity).toBe(opacityBeforeDispose);
+    expect(geometryDispose).toHaveBeenCalledOnce();
+    expect(materialDispose).toHaveBeenCalledOnce();
+    markerDisposes.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+    expect(textureDispose).not.toHaveBeenCalled();
+    expect(layer.root.children).toHaveLength(0);
   });
 });
 
 const createLocalGroup = (overrides = {}) => createLocalGroupLayer({
   THREE,
-  quality: { tier: "high", localGroupGalaxies: 260 },
-  glowTexture: null,
+  texture: new THREE.Texture(),
+  annotations: ANNOTATIONS.localGroup,
+  createMarker: () => new THREE.Sprite(new THREE.SpriteMaterial({ opacity: 0.68 })),
+  quality: { tier: "high" },
   reducedMotion: false,
-  seed: 20610422,
   ...overrides
 });
 
 describe("createLocalGroupLayer", () => {
-  it.each([
-    ["high", 260],
-    ["medium", 160],
-    ["economy", 90]
-  ])("renders a deterministic %s deep field without annotations", (tier, count) => {
-    const input = { quality: { tier, localGroupGalaxies: count }, seed: 20610422 };
-    const first = createLocalGroup(input);
-    const second = createLocalGroup(input);
+  it("renders one texture-backed Local Group plane with six interactive markers", () => {
+    const texture = new THREE.Texture();
+    const layer = createLocalGroup({ texture });
+    const photo = layer.root.getObjectByName("local-group-photo");
 
-    expect(first.catalog).toHaveLength(count);
-    expect(first.catalog).toEqual(second.catalog);
-    expect(new Set(first.catalog.map(({ profile }) => profile)))
-      .toEqual(new Set(["spiral", "elliptical", "irregular"]));
-    expect(first.interactive).toEqual([]);
-    expect(Object.isFrozen(first.interactive)).toBe(true);
-    expect(first.root.getObjectByName("local-group-markers")).toBeUndefined();
-
-    first.dispose();
-    second.dispose();
-  });
-
-  it("publishes deeply frozen catalog records with the documented metadata only", () => {
-    const layer = createLocalGroup();
-    const [record] = layer.catalog;
-
-    expect(Object.isFrozen(layer.catalog)).toBe(true);
-    expect(Object.isFrozen(record)).toBe(true);
-    expect(Object.isFrozen(record.position)).toBe(true);
-    expect(Object.keys(record)).toEqual([
-      "id",
-      "profile",
-      "position",
-      "size",
-      "rotation",
-      "temperature"
+    expectFrozenLayerContract(layer);
+    expect(photo.material.map).toBe(texture);
+    expect(photo.geometry.parameters).toMatchObject({ width: 780, height: 438.75 });
+    expect(photo.material).toMatchObject({
+      opacity: 1,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.NormalBlending
+    });
+    expect(photo.renderOrder).toBe(2);
+    expect(layer.root.position.z).toBe(-138);
+    expect(layer.interactive).toHaveLength(6);
+    expect(layer.interactive.map(({ userData }) => userData.annotation.id)).toEqual([
+      "group-milky-way",
+      "group-andromeda",
+      "group-triangulum",
+      "group-lmc",
+      "group-smc",
+      "group-m32"
     ]);
-    expect(record.id).toBe("deep-field-0");
-    expect(record.position).toHaveLength(3);
-    expect(record.position.every(Number.isFinite)).toBe(true);
-    expect(record.size).toBeGreaterThan(0);
-    expect(record.rotation).toBeGreaterThanOrEqual(0);
-    expect(record.rotation).toBeLessThan(Math.PI * 2);
-    expect(["warm", "cool"]).toContain(record.temperature);
+    expect(layer.root.getObjectByName("local-group-galaxy-field")).toBeUndefined();
+    expect(layer.root.getObjectByName("local-group-spiral-batch")).toBeUndefined();
+    expect(layer.root.getObjectByName("local-group-hero-cores")).toBeUndefined();
+    expect(layer.root.children.filter(({ isMesh }) => isMesh)).toHaveLength(1);
 
     layer.dispose();
   });
 
-  it("batches every galaxy into one procedural shader point cloud per profile", () => {
+  it("uses source positions as normalized photo anchors and preserves all metadata", () => {
     const layer = createLocalGroup();
 
-    ["spiral", "elliptical", "irregular"].forEach((profile) => {
-      const batch = layer.root.getObjectByName(`local-group-${profile}-batch`);
-      const expectedCount = layer.catalog.filter((record) => record.profile === profile).length;
+    layer.interactive.forEach((marker, index) => {
+      const source = ANNOTATIONS.localGroup[index];
+      const annotation = marker.userData.annotation;
 
-      expect(batch).toBeInstanceOf(THREE.Points);
-      expect(batch.geometry.getAttribute("position").count).toBe(expectedCount);
-      expect(batch.geometry.getAttribute("aSize").count).toBe(expectedCount);
-      expect(batch.geometry.getAttribute("aRotation").count).toBe(expectedCount);
-      expect(batch.geometry.getAttribute("aColor").count).toBe(expectedCount);
-      expect(batch.material).toBeInstanceOf(THREE.ShaderMaterial);
-      expect(batch.material.defines[`PROFILE_${profile.toUpperCase()}`]).toBe(1);
-      expect(batch.material.blending).toBe(THREE.AdditiveBlending);
-      expect(batch.material.depthWrite).toBe(false);
-      expect(batch.material.toneMapped).toBe(false);
-      expect(batch.material.uniforms.uIntensity.value).toBeGreaterThanOrEqual(1);
+      expect(marker.position.toArray()).toEqual([
+        source.position[0],
+        source.position[1],
+        source.position[2] + 138
+      ]);
+      expect(annotation).toMatchObject(source);
+      expect(annotation.object3D).toBe(marker);
+      expect(Object.isFrozen(annotation)).toBe(true);
+      expect(marker.userData.stage).toBe(source.stage);
+      expect(marker.userData.baseOpacity).toBe(0.68);
     });
 
     layer.dispose();
   });
 
-  it("uses portable ascending smoothstep edges in every galaxy fragment shader", () => {
+  it("fades photo and markers and applies the 0.12 parallax factor", () => {
     const layer = createLocalGroup();
-    const smoothstepEdges = layer.root.children.flatMap(({ material }) => (
-      [...material.fragmentShader.matchAll(/smoothstep\((\d+\.\d+),\s*(\d+\.\d+)/g)]
-        .map(([, first, second]) => [Number(first), Number(second)])
-    ));
-
-    expect(smoothstepEdges.length).toBeGreaterThan(0);
-    expect(smoothstepEdges.every(([edge0, edge1]) => edge0 < edge1)).toBe(true);
-
-    layer.dispose();
-  });
-
-  it.each([
-    ["high", 14],
-    ["medium", 11],
-    ["economy", 8]
-  ])("isolates the %s deep field to exactly %i hero cores on bloom", (tier, heroCount) => {
-    const layer = createLocalGroup({ quality: { tier } });
-    const heroCores = layer.root.getObjectByName("local-group-hero-cores");
-    const bloomLayer = new THREE.Layers();
-    const baseLayer = new THREE.Layers();
-    bloomLayer.set(BLOOM_SCENE_LAYER);
-    baseLayer.set(0);
-
-    expect(layer.catalog.filter(({ size }) => size >= 18)).toHaveLength(heroCount);
-    expect(heroCores.geometry.getAttribute("position").count).toBe(heroCount);
-    expect(heroCores.layers.test(bloomLayer)).toBe(true);
-    expect(heroCores.layers.test(baseLayer)).toBe(true);
-    expect(layer.root.layers.test(bloomLayer)).toBe(false);
-    ["spiral", "elliptical", "irregular"].forEach((profile) => {
-      expect(layer.root.getObjectByName(`local-group-${profile}-batch`).layers.test(bloomLayer))
-        .toBe(false);
-    });
-
-    layer.dispose();
-  });
-
-  it("uses several depth clusters while preserving broad empty regions", () => {
-    const layer = createLocalGroup();
-    const occupiedCells = new Set(layer.catalog.map(({ position: [x, y] }) => (
-      `${Math.floor((x + 380) / 90)}:${Math.floor((y + 140) / 45)}`
-    )));
-    const depthBands = new Set(layer.catalog.map(({ position: [, , z] }) => Math.floor((-z - 110) / 55)));
-
-    expect(occupiedCells.size).toBeGreaterThanOrEqual(14);
-    expect(occupiedCells.size).toBeLessThanOrEqual(52);
-    expect(depthBands.size).toBeGreaterThanOrEqual(5);
-    expect(layer.catalog.some(({ position: [x, y] }) => Math.abs(x) < 8 && Math.abs(y) < 8))
-      .toBe(false);
-
-    layer.dispose();
-  });
-
-  it("fills most of the settled desktop field with individually readable clustered galaxies", () => {
-    const layer = createLocalGroup({ quality: { tier: "high", localGroupGalaxies: 260 } });
-    const stage = STAGES.find(({ id }) => id === "local-group");
-    const camera = new THREE.PerspectiveCamera(stage.camera.fov, 16 / 9, 0.1, 2000);
-    camera.position.fromArray(stage.camera.position);
-    camera.lookAt(new THREE.Vector3(...stage.camera.target));
-    camera.updateProjectionMatrix();
-    camera.updateMatrixWorld(true);
-    const projectedX = layer.catalog.map(({ position }) => (
-      new THREE.Vector3(...position).project(camera).x
-    ));
-    const occupiedWidth = (Math.max(...projectedX) - Math.min(...projectedX)) / 2;
-    const nonHeroes = layer.catalog.slice(layer.root.userData.composition.heroCount);
-    const profileMaterial = layer.root.getObjectByName("local-group-spiral-batch").material;
-
-    expect(occupiedWidth).toBeGreaterThanOrEqual(0.6);
-    expect(occupiedWidth).toBeLessThanOrEqual(0.75);
-    expect(Math.min(...nonHeroes.map(({ size }) => size))).toBeGreaterThanOrEqual(4);
-    expect(profileMaterial.uniforms.uPointScale.value).toBeGreaterThanOrEqual(1.1);
-    expect(profileMaterial.uniforms.uIntensity.value).toBeGreaterThanOrEqual(1.15);
-
-    layer.dispose();
-  });
-
-  it("distributes clustered galaxies across the settled central and vertical field with real voids", () => {
-    const layer = createLocalGroup({ quality: { tier: "high", localGroupGalaxies: 260 } });
-    const camera = createSettledStageCamera("local-group");
-    const occupied = new Map();
-    layer.catalog.forEach(({ position }) => {
-      const cell = projectedGridCell({ point: position, camera });
-      if (cell != null) occupied.set(cell, (occupied.get(cell) ?? 0) + 1);
-    });
-    const readableCells = [...occupied].filter(([, count]) => count >= 3).map(([cell]) => cell);
-    const occupiedRows = new Set(readableCells.map((cell) => Math.floor(cell / 12)));
-
-    expect(readableCells.length).toBeGreaterThanOrEqual(26);
-    expect(occupiedRows.size).toBeGreaterThanOrEqual(6);
-    expect(readableCells.length).toBeLessThanOrEqual(50);
-
-    layer.dispose();
-  });
-
-  it("applies clamped presence and high-quality parallax without mutating catalog metadata", () => {
-    const layer = createLocalGroup();
-    const catalogSnapshot = structuredClone(layer.catalog);
+    const photo = layer.root.getObjectByName("local-group-photo");
 
     layer.setPresence(0.5);
     expect(layer.root.visible).toBe(true);
-    expect(layer.root.getObjectByName("local-group-spiral-batch").material.uniforms.uPresence.value)
-      .toBe(0.5);
-    expect(layer.root.getObjectByName("local-group-hero-cores").material.uniforms.uPresence.value)
-      .toBe(0.5);
-    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
-    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
-    layer.setPresence(Number.NaN);
+    expect(photo.material.opacity).toBe(0.5);
+    expect(layer.interactive.every(({ material }) => material.opacity === 0.34)).toBe(true);
+    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0.192, y: -0.132 });
+    expect(layer.root.position.z).toBe(-138);
+
+    layer.setPresence("visible");
     expect(layer.root.visible).toBe(false);
-    expect(layer.catalog).toEqual(catalogSnapshot);
+    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
 
     layer.dispose();
   });
 
-  it("honors reduced motion and disposes every batch exactly once", () => {
-    const layer = createLocalGroup({ reducedMotion: true });
-    const resources = layer.root.children.flatMap((child) => [child.geometry, child.material]);
-    const disposeSpies = resources.map((resource) => vi.spyOn(resource, "dispose"));
+  it.each([
+    [{ tier: "high" }, false, { x: 0.192, y: -0.132 }],
+    [{ tier: "medium" }, false, { x: 0.1056, y: -0.0726 }],
+    [{ tier: "economy" }, false, { x: 0, y: 0 }],
+    [{ tier: "high" }, true, { x: 0, y: 0 }]
+  ])("resolves quality and reduced-motion parallax for %j", (quality, reducedMotion, expected) => {
+    const layer = createLocalGroup({ quality, reducedMotion });
 
-    expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
+    const actual = layer.updateParallax({ x: 1, y: -1 });
+    expect(actual.x).toBeCloseTo(expected.x, 8);
+    expect(actual.y).toBeCloseTo(expected.y, 8);
+
+    layer.dispose();
+  });
+
+  it.each([
+    { THREE: null },
+    { texture: null },
+    { texture: {} },
+    { annotations: null },
+    { quality: null },
+    { quality: { tier: "ultra" } },
+    { createMarker: null },
+    { reducedMotion: null }
+  ])("rejects invalid photographic boundary input %j", (overrides) => {
+    expect(() => createLocalGroup(overrides)).toThrow(TypeError);
+  });
+
+  it("skips malformed Local Group records and marker results", () => {
+    const retained = Object.freeze({ id: "retained", stage: 4, position: [7, -9, -136] });
+    const annotations = Object.freeze([
+      null,
+      { id: "short-position", position: [0, 0] },
+      { id: "invalid-marker", position: [1, 2, -138] },
+      retained
+    ]);
+    const marker = new THREE.Object3D();
+    const layer = createLocalGroup({
+      annotations,
+      createMarker: ({ id }) => id === "retained" ? marker : null
+    });
+
+    expect(layer.interactive).toEqual([marker]);
+    expect(marker.position.toArray()).toEqual([7, -9, 2]);
+    expect(marker.userData.annotation).toMatchObject(retained);
+    expect(marker.userData.baseOpacity).toBe(1);
+
+    layer.dispose();
+  });
+
+  it("disposes owned photo and marker resources once without disposing the texture", () => {
+    const texture = new THREE.Texture();
+    const layer = createLocalGroup({ texture });
+    const photo = layer.root.getObjectByName("local-group-photo");
+    const geometryDispose = vi.spyOn(photo.geometry, "dispose");
+    const materialDispose = vi.spyOn(photo.material, "dispose");
+    const markerDisposes = layer.interactive.map(({ material }) => vi.spyOn(material, "dispose"));
+    const textureDispose = vi.spyOn(texture, "dispose");
 
     layer.dispose();
     layer.dispose();
 
-    disposeSpies.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+    expect(geometryDispose).toHaveBeenCalledOnce();
+    expect(materialDispose).toHaveBeenCalledOnce();
+    markerDisposes.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+    expect(textureDispose).not.toHaveBeenCalled();
     expect(layer.root.children).toHaveLength(0);
-  });
-
-  it("validates the rendering boundary and falls back to the tier galaxy budget", () => {
-    expect(() => createLocalGroup({ THREE: null })).toThrow(TypeError);
-    expect(() => createLocalGroup({ quality: null })).toThrow(TypeError);
-    expect(() => createLocalGroup({ quality: { tier: "ultra" } })).toThrow(TypeError);
-    expect(() => createLocalGroup({
-      quality: { tier: "high", localGroupGalaxies: 0 }
-    })).toThrow(TypeError);
-    expect(() => createLocalGroup({ reducedMotion: null })).toThrow(TypeError);
-    expect(() => createLocalGroup({ seed: 1.5 })).toThrow(TypeError);
-
-    const layer = createLocalGroup({ quality: { tier: "medium" } });
-    expect(layer.catalog).toHaveLength(160);
-    layer.dispose();
   });
 });
 
-describe("Local Group main integration", () => {
-  it("does not load bitmap galaxies or activate Local Group annotations", () => {
+describe("photographic galaxy main integration", () => {
+  it("maps both annotation groups, passes photo textures, and includes both marker collections in labels", () => {
     const mainSource = readFileSync(new URL("../../main.js", import.meta.url), "utf8");
-    const layerSetup = mainSource.match(
+    const milkyWaySetup = mainSource.match(
+      /const milkyWayLayer = createMilkyWayLayer\(\{([\s\S]*?)\n\}\);/
+    )?.[1] ?? "";
+    const localGroupSetup = mainSource.match(
       /const localGroupLayer = createLocalGroupLayer\(\{([\s\S]*?)\n\}\);/
     )?.[1] ?? "";
 
-    expect(mainSource).not.toMatch(/groupGalaxyAnnotations|localGroupTexture(?:Sources|Resources|s)/);
-    expect(layerSetup).toContain("seed: 20610422");
-    expect(layerSetup).not.toMatch(/annotations|textureFor|createMarker/);
-    expect(mainSource).toContain('object.stage !== STAGE_INDEX["local-group"]');
+    expect(mainSource).toContain(
+      "const { galaxy: rawGalaxyAnnotationSources, localGroup: rawLocalGroupAnnotationSources } = ANNOTATIONS;"
+    );
+    expect(mainSource).toContain(
+      "const localGroupAnnotationSources = rawLocalGroupAnnotationSources.map(withBaseAsset);"
+    );
+    expect(milkyWaySetup).toMatch(/texture:\s*milkyWayPhotoTexture/);
+    expect(milkyWaySetup).toContain("annotations: galaxyAnnotationSources");
+    expect(milkyWaySetup).toContain("createMarker: createGalaxyMarker");
+    expect(localGroupSetup).toMatch(/texture:\s*localGroupPhotoTexture/);
+    expect(localGroupSetup).toContain("annotations: localGroupAnnotationSources");
+    expect(localGroupSetup).toContain("createMarker: createGalaxyMarker");
+    expect(mainSource).toContain(
+      "const localGroupAnnotations = Object.freeze(localGroupLayer.interactive.map"
+    );
+    expect(mainSource).toMatch(/\.\.\.galaxyAnnotations,[\s\S]*\.\.\.localGroupAnnotations,/);
   });
 });
 

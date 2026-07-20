@@ -1,291 +1,124 @@
-import { BLOOM_SCENE_LAYER } from "../deep-space-postprocessing.js";
+import { createPhotographicPlane } from "./photographic-plane.js";
 import {
   clampPresence,
-  createSeededRandom,
   disposeObjectTree,
   resolveParallax
 } from "./deep-space-utils.js";
 
-const DEFAULT_SEED = 20610422;
-const PROFILE_ORDER = Object.freeze(["spiral", "elliptical", "irregular"]);
-const GALAXIES_PER_TIER = Object.freeze({ high: 260, medium: 160, economy: 90 });
-const HEROES_PER_TIER = Object.freeze({ high: 14, medium: 11, economy: 8 });
-const PROFILE_ASPECT = Object.freeze({ spiral: 1.78, elliptical: 1.34, irregular: 1.18 });
-const PROFILE_COLORS = Object.freeze({ warm: 0xffbd7a, cool: 0xb7d6ff });
-const CLUSTERS = Object.freeze([
-  Object.freeze([-300, 132, -150, 38, 24, 24]),
-  Object.freeze([-150, 150, -205, 42, 22, 30]),
-  Object.freeze([0, 160, -260, 36, 26, 32]),
-  Object.freeze([150, 152, -315, 42, 22, 34]),
-  Object.freeze([300, 128, -370, 38, 25, 28]),
-  Object.freeze([-310, 6, -430, 34, 28, 30]),
-  Object.freeze([-155, -18, -485, 46, 25, 28]),
-  Object.freeze([0, 18, -175, 38, 30, 30]),
-  Object.freeze([155, -12, -235, 44, 24, 32]),
-  Object.freeze([310, 10, -295, 34, 28, 34]),
-  Object.freeze([-285, -132, -350, 42, 24, 32]),
-  Object.freeze([-92, -148, -410, 48, 22, 28]),
-  Object.freeze([92, -126, -470, 44, 26, 26]),
-  Object.freeze([285, -146, -520, 40, 23, 22]),
-  Object.freeze([0, -58, -540, 32, 20, 20]),
-  Object.freeze([-228, 70, -280, 34, 20, 26]),
-  Object.freeze([78, 72, -390, 36, 22, 30]),
-  Object.freeze([232, -76, -455, 34, 21, 24])
-]);
-const EMPTY_INTERACTIVE = Object.freeze([]);
+const ROOT_DEPTH = -138;
+const PARALLAX_FACTOR = 0.12;
+const SUPPORTED_TIERS = Object.freeze(new Set(["high", "medium", "economy"]));
 
-const VERTEX_SHADER = `
-  attribute float aSize;
-  attribute float aRotation;
-  attribute float aAspect;
-  attribute vec3 aColor;
-  uniform float uPresence;
-  uniform float uPointScale;
-  varying vec3 vColor;
-  varying float vRotation;
-  varying float vAspect;
+const isPosition = (position) => Array.isArray(position)
+  && position.length === 3
+  && position.every((value) => typeof value === "number" && Number.isFinite(value));
 
-  void main() {
-    vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
-    float perspective = clamp(540.0 / max(1.0, -viewPosition.z), 0.62, 2.1);
-    gl_PointSize = max(1.25, aSize * perspective * uPointScale);
-    gl_Position = projectionMatrix * viewPosition;
-    vColor = aColor;
-    vRotation = aRotation;
-    vAspect = aAspect;
-  }
-`;
-
-const PROFILE_FRAGMENT_SHADER = `
-  uniform float uPresence;
-  uniform float uIntensity;
-  varying vec3 vColor;
-  varying float vRotation;
-  varying float vAspect;
-
-  vec2 rotatedPoint(vec2 point, float angle) {
-    float cosine = cos(angle);
-    float sine = sin(angle);
-    return mat2(cosine, -sine, sine, cosine) * point;
-  }
-
-  void main() {
-    vec2 point = rotatedPoint(gl_PointCoord - 0.5, vRotation);
-    point.y *= vAspect;
-    float radius = length(point);
-    float alpha = 0.0;
-    float luminance = 1.0;
-
-    #ifdef PROFILE_SPIRAL
-      float angle = atan(point.y, point.x);
-      float arms = pow(0.5 + 0.5 * cos(angle * 2.0 - radius * 31.0), 7.0);
-      float disc = 1.0 - smoothstep(0.08, 0.52, radius);
-      float core = exp(-radius * 15.0);
-      alpha = (disc * (0.16 + arms * 0.82) + core * 1.3) * (1.0 - smoothstep(0.4, 0.53, radius));
-      luminance = 0.78 + core * 0.75 + arms * 0.32;
-    #elif defined(PROFILE_ELLIPTICAL)
-      float envelope = exp(-radius * radius * 14.0);
-      float core = exp(-radius * 18.0);
-      alpha = (envelope * 0.86 + core * 0.82) * (1.0 - smoothstep(0.36, 0.53, radius));
-      luminance = 0.86 + core * 0.92;
-    #else
-      float cloudA = exp(-dot(point - vec2(-0.12, 0.05), point - vec2(-0.12, 0.05)) * 30.0);
-      float cloudB = exp(-dot(point - vec2(0.13, -0.08), point - vec2(0.13, -0.08)) * 42.0);
-      float cloudC = exp(-dot(point - vec2(0.03, 0.16), point - vec2(0.03, 0.16)) * 55.0);
-      alpha = (cloudA * 0.7 + cloudB * 0.84 + cloudC * 0.64) * (1.0 - smoothstep(0.37, 0.54, radius));
-      luminance = 0.88 + cloudB * 0.62;
-    #endif
-
-    alpha *= uPresence;
-    if (alpha < 0.012) discard;
-    gl_FragColor = vec4(vColor * luminance * uIntensity, alpha);
-  }
-`;
-
-const CORE_FRAGMENT_SHADER = `
-  uniform float uPresence;
-  uniform float uIntensity;
-  varying vec3 vColor;
-
-  void main() {
-    vec2 point = gl_PointCoord - 0.5;
-    float radius = length(point) * 2.0;
-    float halo = pow(max(0.0, 1.0 - radius), 3.2);
-    float core = exp(-radius * 8.0);
-    float alpha = (halo * 0.55 + core) * uPresence;
-    if (alpha < 0.01) discard;
-    gl_FragColor = vec4(vColor * (0.85 + core) * uIntensity, alpha);
-  }
-`;
-
-const requireLayerInput = ({ THREE, quality, reducedMotion, seed }) => {
-  const requiredConstructors = [
-    "Group",
-    "BufferGeometry",
-    "Float32BufferAttribute",
-    "ShaderMaterial",
-    "Points",
-    "Color"
-  ];
-  if (!THREE || requiredConstructors.some((name) => typeof THREE[name] !== "function")) {
+const requireLayerInput = ({ THREE, texture, annotations, quality, createMarker, reducedMotion }) => {
+  if (!THREE || typeof THREE.Group !== "function") {
     throw new TypeError("Local Group layer requires a compatible THREE namespace");
   }
-  if (!quality || typeof quality !== "object" || !(quality.tier in GALAXIES_PER_TIER)) {
+  if (!texture || texture.isTexture !== true) {
+    throw new TypeError("Local Group layer requires a THREE texture");
+  }
+  if (!Array.isArray(annotations)) {
+    throw new TypeError("Local Group annotations must be an array");
+  }
+  if (!quality || typeof quality !== "object" || !SUPPORTED_TIERS.has(quality.tier)) {
     throw new TypeError("Local Group quality requires a supported tier");
   }
-  if (quality.localGroupGalaxies != null && (
-    !Number.isInteger(quality.localGroupGalaxies) || quality.localGroupGalaxies < 1
-  )) {
-    throw new TypeError("Local Group galaxy budget must be a positive integer");
+  if (typeof createMarker !== "function" || typeof reducedMotion !== "boolean") {
+    throw new TypeError("Local Group layer requires a marker factory and reduced-motion preference");
   }
-  if (typeof reducedMotion !== "boolean") {
-    throw new TypeError("Local Group layer requires an explicit motion preference");
-  }
-  if (!Number.isSafeInteger(seed)) throw new TypeError("Local Group seed must be a safe integer");
 };
 
-const centeredRandom = (random) => random() + random() + random() - 1.5;
+const createAnnotationMarkers = ({ THREE, annotations, createMarker, root }) => {
+  const markerRoot = new THREE.Group();
+  markerRoot.name = "local-group-markers";
+  root.add(markerRoot);
 
-const sampleClusteredPosition = (random, index) => {
-  const cluster = CLUSTERS[(index * 7) % CLUSTERS.length];
-  const [centerX, centerY, centerZ, spreadX, spreadY, spreadZ] = cluster;
-  let x = centerX + centeredRandom(random) * spreadX;
-  let y = centerY + centeredRandom(random) * spreadY;
-  if (Math.abs(x) < 8 && Math.abs(y) < 8) {
-    x += x < 0 ? -16 : 16;
-    y += y < 0 ? -10 : 10;
-  }
-  return Object.freeze([
-    x,
-    y,
-    centerZ + centeredRandom(random) * spreadZ
-  ]);
+  const interactive = annotations.flatMap((source) => {
+    if (!source || typeof source !== "object" || !isPosition(source.position)) return [];
+
+    const marker = createMarker(source);
+    if (!marker || typeof marker !== "object" || typeof marker.position?.set !== "function") {
+      return [];
+    }
+
+    const [x, y, sourceZ] = source.position;
+    marker.position.set(x, y, sourceZ - ROOT_DEPTH);
+    marker.userData.baseOpacity = marker.material?.opacity ?? 1;
+    const annotation = Object.freeze({ ...source, object3D: marker });
+    marker.userData.annotation = annotation;
+    marker.userData.stage = annotation.stage;
+    marker.renderOrder = 3;
+    markerRoot.add(marker);
+    return [marker];
+  });
+
+  return Object.freeze({ markerRoot, interactive: Object.freeze(interactive) });
 };
 
-const createCatalog = ({ count, heroCount, random }) => Object.freeze(Array.from(
-  { length: count },
-  (_, index) => Object.freeze({
-    id: `deep-field-${index}`,
-    profile: PROFILE_ORDER[index % PROFILE_ORDER.length],
-    position: sampleClusteredPosition(random, index),
-    size: index < heroCount ? 18 + random() * 22 : 8.2 + random() * 9.7,
-    rotation: random() * Math.PI * 2,
-    temperature: index % 7 === 0 ? "warm" : "cool"
-  })
-));
-
-const colorFor = (THREE, record, index) => {
-  const color = new THREE.Color(PROFILE_COLORS[record.temperature]);
-  color.multiplyScalar(0.82 + (index % 9) * 0.025);
-  return color.toArray();
-};
-
-const createGeometry = (THREE, records) => {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(records.flatMap(({ position }) => position), 3));
-  geometry.setAttribute("aSize", new THREE.Float32BufferAttribute(records.map(({ size }) => size), 1));
-  geometry.setAttribute("aRotation", new THREE.Float32BufferAttribute(records.map(({ rotation }) => rotation), 1));
-  geometry.setAttribute("aAspect", new THREE.Float32BufferAttribute(records.map(({ profile, rotation }) => (
-    PROFILE_ASPECT[profile] * (0.92 + rotation / (Math.PI * 2) * 0.16)
-  )), 1));
-  geometry.setAttribute("aColor", new THREE.Float32BufferAttribute(records.flatMap((record, index) => (
-    colorFor(THREE, record, index)
-  )), 3));
-  geometry.computeBoundingSphere();
-  return geometry;
-};
-
-const createMaterial = (THREE, { profile = null, core = false }) => new THREE.ShaderMaterial({
-  name: core ? "local-group-hero-core-material" : `local-group-${profile}-material`,
-  defines: profile ? { [`PROFILE_${profile.toUpperCase()}`]: 1 } : {},
-  uniforms: {
-    uPresence: { value: 1 },
-    uPointScale: { value: core ? 0.46 : 1.85 },
-    uIntensity: { value: core ? 1.72 : 1.36 }
-  },
-  vertexShader: VERTEX_SHADER,
-  fragmentShader: core ? CORE_FRAGMENT_SHADER : PROFILE_FRAGMENT_SHADER,
-  transparent: true,
-  depthWrite: false,
-  depthTest: true,
-  blending: THREE.AdditiveBlending,
-  toneMapped: false
-});
-
-const createProfileBatch = (THREE, profile, catalog) => {
-  const records = catalog.filter((record) => record.profile === profile);
-  const points = new THREE.Points(
-    createGeometry(THREE, records),
-    createMaterial(THREE, { profile })
-  );
-  points.name = `local-group-${profile}-batch`;
-  points.renderOrder = 4;
-  return points;
-};
-
-const createHeroCores = (THREE, catalog, heroCount) => {
-  const records = catalog.slice(0, heroCount);
-  const points = new THREE.Points(
-    createGeometry(THREE, records),
-    createMaterial(THREE, { core: true })
-  );
-  points.name = "local-group-hero-cores";
-  points.layers.enable(BLOOM_SCENE_LAYER);
-  points.renderOrder = 5;
-  return points;
+const setMarkerPresence = (interactive, presence) => {
+  interactive.forEach((marker) => {
+    const materials = Array.isArray(marker.material) ? marker.material : [marker.material];
+    materials.filter(Boolean).forEach((material) => {
+      material.opacity = marker.userData.baseOpacity * presence;
+    });
+  });
 };
 
 export const createLocalGroupLayer = (input = {}) => {
   const {
     THREE,
+    texture,
+    annotations,
     quality,
-    glowTexture: _glowTexture = null,
-    reducedMotion,
-    seed = DEFAULT_SEED
+    createMarker,
+    reducedMotion
   } = input;
-  requireLayerInput({ THREE, quality, reducedMotion, seed });
+  requireLayerInput({ THREE, texture, annotations, quality, createMarker, reducedMotion });
 
-  const count = quality.localGroupGalaxies ?? GALAXIES_PER_TIER[quality.tier];
-  const heroCount = Math.min(count, HEROES_PER_TIER[quality.tier]);
-  const catalog = createCatalog({ count, heroCount, random: createSeededRandom(seed) });
-  const root = new THREE.Group();
-  root.name = "local-group-layer";
-  root.visible = false;
-  root.userData.composition = Object.freeze({
-    galaxyCount: count,
-    heroCount,
-    profiles: PROFILE_ORDER,
-    clustered: true
+  const photo = createPhotographicPlane({
+    THREE,
+    texture,
+    name: "local-group-photo",
+    width: 780,
+    aspect: 16 / 9,
+    depth: ROOT_DEPTH,
+    opacity: 1,
+    renderOrder: 2
   });
-  const batches = Object.freeze(PROFILE_ORDER.map((profile) => createProfileBatch(THREE, profile, catalog)));
-  const heroCores = createHeroCores(THREE, catalog, heroCount);
-  const renderObjects = Object.freeze([...batches, heroCores]);
-  root.add(...renderObjects);
+  const root = photo.root;
+  root.name = "local-group-layer";
+  const { markerRoot, interactive } = createAnnotationMarkers({
+    THREE,
+    annotations,
+    createMarker,
+    root
+  });
   let disposed = false;
 
   return Object.freeze({
     root,
-    catalog,
-    interactive: EMPTY_INTERACTIVE,
+    interactive,
     setPresence: (value) => {
       if (disposed) return;
       const presence = clampPresence(value);
-      root.visible = presence > 0.01;
-      renderObjects.forEach(({ material }) => {
-        material.uniforms.uPresence.value = presence;
-      });
+      photo.setPresence(presence);
+      setMarkerPresence(interactive, presence);
     },
     updateParallax: (pointer = {}) => {
+      if (disposed) return Object.freeze({ x: root.position.x, y: root.position.y });
       const { x, y } = pointer && typeof pointer === "object" ? pointer : {};
       const offset = resolveParallax({ x, y, reducedMotion, tier: quality.tier });
-      root.position.x = offset.x;
-      root.position.y = offset.y;
+      photo.setParallax(offset, PARALLAX_FACTOR);
       return Object.freeze({ x: root.position.x, y: root.position.y });
     },
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      disposeObjectTree(root);
+      disposeObjectTree(markerRoot);
+      photo.dispose();
     }
   });
 };

@@ -39,6 +39,7 @@ import { createEarthLayer } from "./scene/layers/earth.js";
 import { createCosmicWebLayer } from "./scene/layers/cosmic-web.js";
 import { createLocalGroupLayer } from "./scene/layers/local-group.js";
 import { createMilkyWayLayer } from "./scene/layers/milky-way.js";
+import { selectDeepSpaceTextureRoutes } from "./scene/deep-space-assets.js";
 import { selectEarthTextureRoutes } from "./scene/earth-assets.js";
 import { createSolarSystemLayer } from "./scene/layers/solar-system.js";
 import { createTextureStore } from "./scene/textures.js";
@@ -602,8 +603,9 @@ const satelliteMap = createSatelliteMap({
 const visualObjects = OBJECTS.map(withBaseAsset);
 const objects = visualObjects.filter((object) => "radius" in object);
 const regionAnnotations = visualObjects.filter((object) => !("radius" in object));
-const { galaxy: rawGalaxyAnnotationSources } = ANNOTATIONS;
+const { galaxy: rawGalaxyAnnotationSources, localGroup: rawLocalGroupAnnotationSources } = ANNOTATIONS;
 const galaxyAnnotationSources = rawGalaxyAnnotationSources.map(withBaseAsset);
+const localGroupAnnotationSources = rawLocalGroupAnnotationSources.map(withBaseAsset);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -660,6 +662,12 @@ const earthTextureRoutes = Object.freeze({
   surface: publicAsset(rawEarthTextureRoutes.surface),
   clouds: publicAsset(rawEarthTextureRoutes.clouds)
 });
+const rawDeepSpaceTextureRoutes = selectDeepSpaceTextureRoutes(quality);
+const deepSpaceTextureRoutes = Object.freeze({
+  milkyWay: publicAsset(rawDeepSpaceTextureRoutes.milkyWay),
+  localGroup: publicAsset(rawDeepSpaceTextureRoutes.localGroup),
+  cosmicWeb: publicAsset(rawDeepSpaceTextureRoutes.cosmicWeb)
+});
 const solarTextureSources = Object.freeze([
   ...new Set(solarPlanets.flatMap(({ image }) => image ? [image] : []))
 ]);
@@ -669,15 +677,31 @@ const introController = createIntroController({
   reducedMotion,
   onStart: startJourney
 });
-const [earthTextureResource, earthCloudResource, ...solarTextureResources] = await Promise.all([
+const [
+  earthTextureResource,
+  earthCloudResource,
+  milkyWayPhotoResource,
+  localGroupPhotoResource,
+  ...solarTextureResources
+] = await Promise.all([
   textureStore.load(earthTextureRoutes.surface, 0x16355f),
   textureStore.load(earthTextureRoutes.clouds, 0x000000),
+  textureStore.load(deepSpaceTextureRoutes.milkyWay, 0x02040a),
+  textureStore.load(deepSpaceTextureRoutes.localGroup, 0x02040a),
   ...solarTextureSources.map((url) => textureStore.load(url, 0x07101f))
 ]);
 const earthTexture = earthTextureResource.texture;
 const earthCloudTexture = earthCloudResource.texture;
+const milkyWayPhotoTexture = milkyWayPhotoResource.texture;
+const localGroupPhotoTexture = localGroupPhotoResource.texture;
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-[earthTextureResource, earthCloudResource, ...solarTextureResources].forEach(({ texture }) => {
+[
+  earthTextureResource,
+  earthCloudResource,
+  milkyWayPhotoResource,
+  localGroupPhotoResource,
+  ...solarTextureResources
+].forEach(({ texture }) => {
   texture.anisotropy = maxAnisotropy;
 });
 const solarTextures = new Map(solarTextureSources.map((url, index) => (
@@ -1220,9 +1244,9 @@ const createGalaxyMarker = () => {
 };
 const milkyWayLayer = createMilkyWayLayer({
   THREE,
+  texture: milkyWayPhotoTexture,
   annotations: galaxyAnnotationSources,
   quality,
-  glowTexture: glowDiscTexture,
   createMarker: createGalaxyMarker,
   reducedMotion
 });
@@ -1231,11 +1255,15 @@ group.add(milkyWayLayer.root);
 
 const localGroupLayer = createLocalGroupLayer({
   THREE,
+  texture: localGroupPhotoTexture,
+  annotations: localGroupAnnotationSources,
   quality,
-  glowTexture: glowDiscTexture,
+  createMarker: createGalaxyMarker,
   reducedMotion,
-  seed: 20610422
 });
+const localGroupAnnotations = Object.freeze(localGroupLayer.interactive.map(
+  (marker) => marker.userData.annotation
+));
 group.add(localGroupLayer.root);
 
 const cosmicWebLayer = createCosmicWebLayer({
@@ -1321,6 +1349,7 @@ const labelTargets = [
   earthAnnotation,
   ...solarAnnotations,
   ...galaxyAnnotations,
+  ...localGroupAnnotations,
   ...regionAnnotations.filter((annotation) => ![
     STAGE_INDEX["milky-way"],
     STAGE_INDEX["local-group"],
@@ -1776,6 +1805,8 @@ function disposeExperience() {
   sceneManager.dispose();
   earthTextureResource.release();
   earthCloudResource.release();
+  milkyWayPhotoResource.release();
+  localGroupPhotoResource.release();
   textureStore.dispose();
   glowDiscTexture.dispose();
 }
