@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { createQualityProfile } from "./quality-profile.js";
 
 describe("createQualityProfile deep-space budgets", () => {
+  it.each([
+    [
+      "high-resolution desktop",
+      { width: 1920, height: 1080, dpr: 3, cores: 16, reducedMotion: false },
+      2
+    ],
+    [
+      "medium-resolution device",
+      { width: 900, height: 700, dpr: 3, cores: 8, reducedMotion: false },
+      1.5
+    ],
+    [
+      "economy-resolution device",
+      { width: 390, height: 844, dpr: 3, cores: 8, reducedMotion: false },
+      1.25
+    ]
+  ])("caps the pixel ratio for a %s", (_name, input, pixelRatio) => {
+    expect(createQualityProfile(input).pixelRatio).toBe(pixelRatio);
+  });
+
   it("keeps high bloom while reduced motion only disables movement", () => {
     const profile = createQualityProfile({
       width: 1920,

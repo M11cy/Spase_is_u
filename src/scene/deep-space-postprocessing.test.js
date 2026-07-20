@@ -96,7 +96,7 @@ beforeEach(() => {
 
 const createComposer = () => ({
   render: vi.fn(),
-  setPixelRatio: vi.fn(),
+  setPixelRatios: vi.fn(),
   setSize: vi.fn(),
   dispose: vi.fn()
 });
@@ -169,7 +169,7 @@ describe("createDeepSpacePostprocessing", () => {
     expect(renderMasks).toEqual([2, originalCameraMask]);
     expect(camera.layers.mask).toBe(originalCameraMask);
     expect(bloomComposer.setPixelRatio).toHaveBeenCalledWith(1.5);
-    expect(finalComposer.setPixelRatio).toHaveBeenCalledWith(1.5);
+    expect(finalComposer.setPixelRatio).toHaveBeenCalledWith(2);
     expect(bloomComposer.setSize).toHaveBeenCalledWith(1600, 900);
     expect(finalComposer.setSize).toHaveBeenCalledWith(1600, 900);
     expect(bloom.dispose).toHaveBeenCalledOnce();
@@ -252,8 +252,8 @@ describe("createDeepSpacePostprocessing", () => {
     expect(composerFactory).toHaveBeenCalledWith({ renderer, scene, camera, quality });
     expect(composer.render).toHaveBeenCalledOnce();
     expect(renderer.render).not.toHaveBeenCalled();
-    expect(composer.setPixelRatio).toHaveBeenCalledOnce();
-    expect(composer.setPixelRatio).toHaveBeenCalledWith(1.5);
+    expect(composer.setPixelRatios).toHaveBeenCalledOnce();
+    expect(composer.setPixelRatios).toHaveBeenCalledWith({ base: 2, bloom: 1.5 });
     expect(composer.setSize).toHaveBeenCalledOnce();
     expect(composer.setSize).toHaveBeenCalledWith(1920, 1080);
     expect(composer.dispose).toHaveBeenCalledOnce();

@@ -93,9 +93,9 @@ const createDefaultComposer = ({ renderer, scene, camera, quality }) => {
       }
       finalComposer.render();
     },
-    setPixelRatio: (pixelRatio) => {
-      bloomComposer.setPixelRatio(pixelRatio);
-      finalComposer.setPixelRatio(pixelRatio);
+    setPixelRatios: ({ base, bloom }) => {
+      bloomComposer.setPixelRatio(bloom);
+      finalComposer.setPixelRatio(base);
     },
     setSize: (width, height) => {
       bloomComposer.setSize(width, height);
@@ -164,7 +164,10 @@ export const createDeepSpacePostprocessing = (input = {}) => {
     resize: ({ width, height, pixelRatio }) => {
       if (disposed || !composer) return;
       try {
-        composer.setPixelRatio(pixelRatio * quality.bloomScale);
+        composer.setPixelRatios({
+          base: pixelRatio,
+          bloom: pixelRatio * quality.bloomScale
+        });
         composer.setSize(width, height);
       } catch {
         disableComposer();
