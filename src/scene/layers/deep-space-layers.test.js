@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createQualityProfile } from "../../core/quality-profile.js";
 import { STAGES } from "../../data/cosmos.js";
 import { BLOOM_SCENE_LAYER } from "../deep-space-postprocessing.js";
+import { createCosmicTissue } from "./cosmic-tissue.js";
 import { createCosmicWebLayer } from "./cosmic-web.js";
 import { createLocalGroupLayer } from "./local-group.js";
 import { createMilkyWayLayer } from "./milky-way.js";
@@ -311,6 +312,11 @@ describe("createMilkyWayLayer", () => {
     expect(() => createLayer({ quality })).toThrow(TypeError);
   });
 
+  it("rejects an absent layer contract", () => {
+    expect(() => createMilkyWayLayer())
+      .toThrow("Milky Way layer requires a compatible THREE namespace");
+  });
+
   it.each([
     undefined,
     null,
@@ -344,6 +350,24 @@ describe("createMilkyWayLayer", () => {
     layer.dispose();
   });
 
+  it("projects a central annotation and tolerates a material-less marker", () => {
+    const marker = new THREE.Object3D();
+    const layer = createLayer({
+      annotations: [{ id: "origin", stage: 3, position: [0, 0, -80] }],
+      createMarker: () => marker
+    });
+
+    expect(layer.interactive).toEqual([marker]);
+    expect(marker.position.x).toBeCloseTo(15);
+    expect(marker.position.y).toBeCloseTo(-Math.sqrt(675));
+    expect(marker.position.z).toBe(0);
+    expect(marker.userData.baseOpacity).toBe(1);
+    expect(() => layer.setPresence(0.5)).not.toThrow();
+    expect(layer.root.visible).toBe(true);
+
+    layer.dispose();
+  });
+
   it("fails closed for invalid presence and parallax input", () => {
     const layer = createLayer();
 
@@ -361,11 +385,16 @@ describe("createMilkyWayLayer", () => {
     const disposeGeometry = vi.spyOn(stars.geometry, "dispose");
     const disposeMaterial = vi.spyOn(stars.material, "dispose");
 
+    layer.setPresence(0.4);
+    const opacityBeforeDispose = stars.material.opacity;
+
     layer.dispose();
+    layer.setPresence(0.9);
     layer.dispose();
 
     expect(disposeGeometry).toHaveBeenCalledOnce();
     expect(disposeMaterial).toHaveBeenCalledOnce();
+    expect(stars.material.opacity).toBe(opacityBeforeDispose);
   });
 });
 
@@ -556,6 +585,7 @@ describe("createLocalGroupLayer", () => {
     expect(layer.root.getObjectByName("local-group-hero-cores").material.uniforms.uPresence.value)
       .toBe(0.5);
     expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+    expect(layer.updateParallax(null)).toEqual({ x: 0, y: 0 });
     layer.setPresence(Number.NaN);
     expect(layer.root.visible).toBe(false);
     expect(layer.catalog).toEqual(catalogSnapshot);
@@ -581,6 +611,9 @@ describe("createLocalGroupLayer", () => {
     expect(() => createLocalGroup({ THREE: null })).toThrow(TypeError);
     expect(() => createLocalGroup({ quality: null })).toThrow(TypeError);
     expect(() => createLocalGroup({ quality: { tier: "ultra" } })).toThrow(TypeError);
+    expect(() => createLocalGroup({
+      quality: { tier: "high", localGroupGalaxies: 0 }
+    })).toThrow(TypeError);
     expect(() => createLocalGroup({ reducedMotion: null })).toThrow(TypeError);
     expect(() => createLocalGroup({ seed: 1.5 })).toThrow(TypeError);
 
@@ -611,6 +644,121 @@ const createCosmicWeb = (overrides = {}) => createCosmicWebLayer({
   reducedMotion: false,
   seed: 20260719,
   ...overrides
+});
+
+const createTissue = (overrides = {}) => createCosmicTissue({
+  THREE,
+  tier: "high",
+  seed: 20260719,
+  volume: { width: 920, height: 620, depth: 240 },
+  ...overrides
+});
+
+describe("createCosmicTissue", () => {
+  it.each([
+    "Group",
+    "PlaneGeometry",
+    "Mesh",
+    "ShaderMaterial",
+    "Color",
+    "Vector2"
+  ])("rejects a THREE namespace without a usable %s constructor", (constructorName) => {
+    const incompatibleThree = { ...THREE, [constructorName]: undefined };
+
+    expect(() => createTissue({ THREE: incompatibleThree }))
+      .toThrow("Cosmic tissue requires a compatible THREE namespace");
+  });
+
+  it("rejects a missing input contract and unsupported tiers", () => {
+    expect(() => createCosmicTissue())
+      .toThrow("Cosmic tissue requires a compatible THREE namespace");
+    expect(() => createTissue({ tier: "ultra" }))
+      .toThrow("Cosmic tissue requires a supported tier");
+    expect(() => createTissue({ tier: undefined }))
+      .toThrow("Cosmic tissue requires a supported tier");
+  });
+
+  it.each([
+    undefined,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.MIN_SAFE_INTEGER - 1
+  ])("rejects unsafe tissue seed %s", (seed) => {
+    expect(() => createTissue({ seed }))
+      .toThrow("Cosmic tissue seed must be a safe integer");
+  });
+
+  it.each([
+    undefined,
+    null,
+    "920x620x240",
+    {},
+    { width: 920, height: 620 },
+    { width: 0, height: 620, depth: 240 },
+    { width: 920, height: -1, depth: 240 },
+    { width: 920, height: 620, depth: Number.NaN },
+    { width: Number.POSITIVE_INFINITY, height: 620, depth: 240 }
+  ])("rejects invalid tissue volume %j", (volume) => {
+    expect(() => createTissue({ volume }))
+      .toThrow("Cosmic tissue volume dimensions must be positive finite numbers");
+  });
+
+  it("clamps presence and normalizes missing or non-finite parallax axes", () => {
+    const tissue = createTissue();
+    const profileParallax = [0.22, 0.46, 0.74];
+    const positions = () => tissue.meshes.map(({ position }) => [position.x, position.y]);
+    const presences = () => tissue.meshes.map(({ material }) => (
+      material.uniforms.uPresence.value
+    ));
+
+    expect(tissue.metadata.profiles.map(({ parallax }) => parallax)).toEqual(profileParallax);
+    tissue.setPresence(1.5);
+    expect(presences()).toEqual([1, 1, 1]);
+    tissue.setPresence(-0.5);
+    expect(presences()).toEqual([0, 0, 0]);
+    tissue.setPresence(Number.NaN);
+    expect(presences()).toEqual([0, 0, 0]);
+
+    tissue.setParallax({ x: 4, y: -3 });
+    expect(positions()).toEqual(profileParallax.map((parallax) => [
+      4 * parallax,
+      -3 * parallax
+    ]));
+    tissue.setParallax();
+    expect(positions()).toEqual(profileParallax.map(() => [0, 0]));
+    tissue.setParallax(null);
+    expect(positions()).toEqual(profileParallax.map(() => [0, 0]));
+    tissue.setParallax({ x: Number.NaN, y: Number.POSITIVE_INFINITY });
+    expect(positions()).toEqual(profileParallax.map(() => [0, 0]));
+
+    tissue.dispose();
+  });
+
+  it("disposes its shared resources once and ignores lifecycle updates afterward", () => {
+    const tissue = createTissue();
+    const geometryDispose = vi.spyOn(tissue.meshes[0].geometry, "dispose");
+    const materialDisposes = tissue.meshes.map(({ material }) => vi.spyOn(material, "dispose"));
+
+    tissue.setPresence(0.42);
+    tissue.setParallax({ x: 2, y: -2 });
+    const presenceBeforeDispose = tissue.meshes.map(({ material }) => (
+      material.uniforms.uPresence.value
+    ));
+    const positionsBeforeDispose = tissue.meshes.map(({ position }) => position.clone());
+
+    tissue.dispose();
+    tissue.setPresence(0.9);
+    tissue.setParallax({ x: -8, y: 8 });
+    tissue.dispose();
+
+    expect(tissue.root.children).toHaveLength(0);
+    expect(tissue.meshes.map(({ material }) => material.uniforms.uPresence.value))
+      .toEqual(presenceBeforeDispose);
+    expect(tissue.meshes.map(({ position }) => position))
+      .toEqual(positionsBeforeDispose);
+    expect(geometryDispose).toHaveBeenCalledOnce();
+    materialDisposes.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+  });
 });
 
 const pointAt = (positions, index) => [
