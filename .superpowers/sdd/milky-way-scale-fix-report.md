@@ -42,9 +42,9 @@ Annotation anchors were scaled by the same factor so they remain attached to the
 
 ## Production visual proof
 
-The proof used a fresh production build and an isolated ignored Playwright spec. It completed the public-control progression (rocket catch, eight planet quizzes, engine assembly), selected stage 3, switched to a `1920 × 1080` viewport, and captured a new artifact without overwriting Task7 output.
+The final proof is the tracked Task7 artifact from a fresh production build. The complete public-control progression solved the rocket catch, all eight planet quizzes, engine assembly, and every later gate before writing the official `1920 × 1080` frame.
 
-![[milky-way-scale-proof/galaxy-500w-1920x1080.png]]
+![[ultra-photo-artifacts/milky-way.png]]
 
 - Before occupied span: `0.47263017`.
 - After occupied span: `0.602803738317757`.
@@ -73,8 +73,8 @@ The proof used a fresh production build and an isolated ignored Playwright spec.
 ## Scope preservation
 
 - Master photo assets and texture quality were not changed.
-- `tests/progression.e2e.spec.js` and `.superpowers/sdd/ultra-photo-artifacts/galaxy.png` remain untouched and unstaged as Task7 work.
-- The temporary ignored proof spec/config were removed after the capture; only the new ignored PNG proof remains in its unique directory.
+- Task7 owns `tests/progression.e2e.spec.js` and the tracked official `ultra-photo-artifacts/milky-way.png` evidence.
+- The report now embeds the official artifact so a clean checkout renders the accepted proof without relying on ignored temporary output.
 
 ## Checkpoint
 

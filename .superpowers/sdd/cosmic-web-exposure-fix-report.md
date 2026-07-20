@@ -12,7 +12,7 @@ completed: true
 
 # Cosmic Web Exposure Fix
 
-Related baseline: [[task-5-report|Ultra Task 5 — Oversized Photographic Cosmic Web]].
+Related baseline: [[task-5-report|Ultra Task 5 -- Oversized Photographic Cosmic Web]].
 
 ## Goal
 
@@ -35,11 +35,11 @@ Restore a vivid but restrained Cosmic Web exposure without changing the accepted
 
 ### Asset boundary
 
-All nine browser-selectable Cosmic Web files were decoded through Sharp, normalized to `1920 × 1080`, and measured with the acceptance thresholds. The ranges were:
+All nine browser-selectable Cosmic Web files were decoded through Sharp, normalized to `1920 x 1080`, and measured with the acceptance thresholds. The ranges were:
 
 | Asset family | Mean luminance | Luminous ratio | Purple ratio | Near-black ratio | Warm ratio |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 2K/4K/8K AVIF, WebP, JPEG | `48.6356–49.2475` | `0.982471–0.986226` | `0.971417–0.974516` | `0.003667–0.005589` | `0.905377–0.914026` |
+| 2K/4K/8K AVIF, WebP, JPEG | `48.6356-49.2475` | `0.982471-0.986226` | `0.971417-0.974516` | `0.003667-0.005589` | `0.905377-0.914026` |
 
 The honest browser route requested `/space/cosmic-web-photo-8k.avif`, received HTTP `200` with `image/avif`, and logged no browser errors. `git diff --quiet HEAD -- public/space/cosmic-web-photo-*` remains clean.
 
@@ -57,7 +57,7 @@ The transmittance values use the same shader relation, $e^{-(density \cdot dista
 
 ### Page-versus-canvas isolation
 
-| Fresh pre-fix `1920 × 1080` crop | Page | Canvas only |
+| Fresh pre-fix `1920 x 1080` crop | Page | Canvas only |
 | --- | ---: | ---: |
 | Luminous ratio | `0.0101445231` | `0.0091987481` |
 | Purple-magenta ratio | `0.0043779691` | `0.0044021983` |
@@ -69,12 +69,12 @@ The official Task7 frame independently reported `0.009816` luminous coverage. Th
 
 ## TDD record
 
-> [!failure] RED — fog contract
+> [!failure] RED -- fog contract
 > `npm.cmd test -- src/scene/layers/deep-space-layers.test.js -t createCosmicWebLayer` failed exactly because the primary material returned `fog: true` when the new contract required `false`: `1 failed`, `13 passed`, `35 skipped`.
 
 After both Cosmic Web materials opted out of scene fog, the same focused suite passed: `14 passed`, `35 skipped`.
 
-> [!failure] RED — calibrated exposure contract
+> [!failure] RED -- calibrated exposure contract
 > Updating the expected base/faded opacities first produced the intended two failures: actual `0.98 / 0.16` versus required `0.17 / 0.034`, and actual half-presence `0.49 / 0.08` versus required `0.085 / 0.017`.
 
 After the minimal opacity change, the focused suite returned to `14 passed`.
@@ -98,7 +98,7 @@ Every candidate was applied to the same already-unlocked honest production stage
 | `0.20 / 0.040` | `0.360705` | `0.584159` | `1.000000` | `0.590799` | `0.251817` |
 
 > [!info] Constraint interaction
-> The preferred `0.07–0.18` luminous band and hard `nearBlack <= 0.65` gate cannot both be reached by opacity-only tuning of the accepted image histogram. At `0.10 / 0.020`, luminance is already `0.181845` while near-black remains `0.778410`. The next restrained candidates reduce near-black monotonically, with `0.16 / 0.032` missing the hard gate by `0.003812`. The selected `0.17 / 0.034` interpolation is therefore the smallest pair with a useful near-black margin; it prioritizes all hard gates and the no-wash visual requirement.
+> The preferred `0.07-0.18` luminous band and hard `nearBlack <= 0.65` gate cannot both be reached by opacity-only tuning of the accepted image histogram. At `0.10 / 0.020`, luminance is already `0.181845` while near-black remains `0.778410`. The next restrained candidates reduce near-black monotonically, with `0.16 / 0.032` missing the hard gate by `0.003812`. The selected `0.17 / 0.034` interpolation is therefore the smallest pair with a useful near-black margin; it prioritizes all hard gates and the no-wash visual requirement.
 
 ## Final implementation
 
@@ -109,7 +109,7 @@ Every candidate was applied to the same already-unlocked honest production stage
 
 ### Before and after
 
-| `1920 × 1080` page crop | Fresh before | Final | Required hard gate |
+| `1920 x 1080` page crop | Fresh before | Final | Required hard gate |
 | --- | ---: | ---: | ---: |
 | Luminous ratio | `0.0101445231` | `0.3154527271` | robustly above `0.04` |
 | Purple-magenta ratio | `0.0043779691` | `0.5370230813` | `>= 0.055` |

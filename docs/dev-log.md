@@ -444,3 +444,66 @@ Related: [[2026-07-19-deep-space-visual-overhaul-design]], [[2026-07-20-procedur
 
 > [!warning] Остаточный риск
 > Production bundle остаётся больше `500 kB`. Несколько дальних слабых Cosmic Web дуг всё ещё могут читаться как граф, но корневая pixel-проверка признала это неблокирующим Minor после существенного удаления straight-chord доминирования.
+
+## 2026-07-20 — Ultra photographic release acceptance
+
+Связанные документы: [[2026-07-20-ultra-photographic-space-design]] и [[2026-07-20-ultra-photographic-space]].
+
+> [!success] Финальный результат
+> Полный production acceptance завершён: unit `187/187`, coverage по всем четырём метрикам выше `80%`, build и audit прошли, Playwright `5/5` прошёл за `4.3m`, а original-pixel проверка приняла `10/10` официальных кадров. Все мини-игры решены через публичные controls без localStorage или progression bypass; console/WebGL errors и horizontal overflow не обнаружены.
+
+### Release gates
+
+| Gate | Результат |
+| --- | --- |
+| Unit | `15/15` файлов, `187/187` тестов |
+| Coverage | statements `86.75%`, branches `80.38%`, functions `84.46%`, lines `88.61%` |
+| Build | PASS, `52` modules, JS chunk `991.40 kB` (`269.88 kB` gzip) |
+| Audit | `0 vulnerabilities` |
+| Focused production progression | `1/1` PASS за `3.0m` |
+| Full production E2E | `5/5` PASS за `4.3m` |
+| Runtime safety | zero collected console/WebGL errors; no horizontal overflow; progression barriers сохранены |
+
+Local Group acceptance требует ровно шесть видимых `data-id` на desktop и mobile: `group-milky-way`, `group-andromeda`, `group-triangulum`, `group-lmc`, `group-smc`, `group-m32`. Публичный клик по `group-andromeda` открыл корректную object panel, а Close вернул панель в закрытое состояние.
+
+### High-tier DPR evidence
+
+High-tier профиль вычислен из boot-observed viewport и фактического DPR при тестово зафиксированном `hardwareConcurrency = 12`: viewport `1112 × 625`, `devicePixelRatio = 1`, выбранный tier `high`, ожидаемый `pixelRatio = min(2, DPR) = 1`.
+
+| Capture | Viewport / client canvas | Backing canvas | Width ratio | Height ratio | Допуск |
+| --- | --- | --- | ---: | ---: | ---: |
+| Desktop | `1920 × 1080` | `1920 × 1080` | `1.000` | `1.000` | `≤ 0.02` |
+| Mobile | `390 × 844` | `390 × 844` | `1.000` | `1.000` | `≤ 0.02` |
+
+### Original-pixel verdict
+
+Каждый файл проверен через original-resolution просмотр; PNG dimensions совпадают с соответствующим viewport.
+
+| Артефакт | Размер | Verdict | Наблюдение |
+| --- | ---: | --- | --- |
+| `solar-system.png` | `1920 × 1080` | ACCEPT | Чёткие Солнце, планеты, орбиты и подписи; sub-native blur нет. |
+| `milky-way.png` | `1920 × 1080` | ACCEPT | Полный крупный фотографический диск и halo видимы; не point spiral. |
+| `local-group.png` | `1920 × 1080` | ACCEPT | Равномерное заполнение кадра и ровно шесть читаемых аннотаций. |
+| `cosmic-web.png` | `1920 × 1080` | ACCEPT | Яркие органические purple/magenta нити и округлые узлы выходят за все края; angular-cell доминирования нет. |
+| `unknown-star.png` | `1920 × 1080` | ACCEPT | Честно поставленная круглая звезда видна в свободной области; coupon отсутствует. |
+| `solar-system-mobile.png` | `390 × 844` | ACCEPT | Система остаётся чёткой; top-center rail не закрывает основной subject. |
+| `milky-way-mobile.png` | `390 × 844` | ACCEPT | Полный яркий диск читается по всей высоте и свободен от rail. |
+| `local-group-mobile.png` | `390 × 844` | ACCEPT | Все шесть подписей видимы, UI не обрезан и не переполняет viewport. |
+| `cosmic-web-mobile.png` | `390 × 844` | ACCEPT | Нити заполняют экран за краями, topology остаётся плавной и органической. |
+| `unknown-star-mobile.png` | `390 × 844` | ACCEPT | Mobile-first pre-coupon кадр показывает круглую звезду отдельно от текста и rail. |
+
+### Official captures
+
+![[.superpowers/sdd/ultra-photo-artifacts/solar-system.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/milky-way.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/local-group.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/cosmic-web.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/unknown-star.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/solar-system-mobile.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/milky-way-mobile.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/local-group-mobile.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/cosmic-web-mobile.png]]
+![[.superpowers/sdd/ultra-photo-artifacts/unknown-star-mobile.png]]
+
+> [!warning] Остаточный advisory
+> Vite по-прежнему сообщает, что production JavaScript chunk `991.40 kB` превышает advisory-порог `500 kB`. Build проходит; bundle splitting не входит в photographic acceptance.

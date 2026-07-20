@@ -1,8 +1,17 @@
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
+import { createQualityProfile } from "../src/core/quality-profile.js";
 import { SOLAR_PLANETS, STAGES } from "../src/data/cosmos.js";
 
-const ARTIFACT_DIRECTORY = ".superpowers/sdd/task-7-artifacts";
+const ARTIFACT_DIRECTORY = ".superpowers/sdd/ultra-photo-artifacts";
+const LOCAL_GROUP_LABEL_IDS = Object.freeze([
+  "group-milky-way",
+  "group-andromeda",
+  "group-triangulum",
+  "group-lmc",
+  "group-smc",
+  "group-m32"
+]);
 
 const settledFrame = async (page) => {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
@@ -20,6 +29,64 @@ const expectRailInvariant = async (page, stage) => {
   await expect(rail.locator(`button[data-stage="${stage}"]`)).toHaveAttribute("aria-current", "step");
   await expect(rail.locator('button[aria-current="step"]')).toHaveCount(1);
   await expect(page.locator(`#distanceMarkers li[data-stage="${stage}"]`)).toHaveClass(/active/);
+};
+
+const selectExpectedHighTierProfile = async (page) => {
+  const inputs = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    dpr: window.devicePixelRatio,
+    cores: navigator.hardwareConcurrency ?? 4,
+    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches
+  }));
+  const profile = createQualityProfile(inputs);
+  expect(profile.tier).toBe("high");
+  return Object.freeze({ inputs, profile });
+};
+
+const expectCanvasDpr = async (page, expectedProfile) => {
+  const evidence = await page.locator("canvas#cosmosCanvas").evaluate((canvas) => ({
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    clientWidth: canvas.clientWidth,
+    clientHeight: canvas.clientHeight
+  }));
+  const widthRatio = evidence.canvasWidth / evidence.clientWidth;
+  const heightRatio = evidence.canvasHeight / evidence.clientHeight;
+
+  expect(Math.abs(widthRatio - expectedProfile.pixelRatio)).toBeLessThanOrEqual(0.02);
+  expect(Math.abs(heightRatio - expectedProfile.pixelRatio)).toBeLessThanOrEqual(0.02);
+  return Object.freeze({
+    ...evidence,
+    expectedPixelRatio: expectedProfile.pixelRatio,
+    widthRatio,
+    heightRatio
+  });
+};
+
+const expectLocalGroupAnnotations = async (page) => {
+  const visibleLabels = page.locator(".space-label.visible");
+  await expect(visibleLabels).toHaveCount(LOCAL_GROUP_LABEL_IDS.length);
+  const visibleIds = await visibleLabels.evaluateAll((elements) => (
+    elements.map((element) => element.dataset.id).sort()
+  ));
+  expect(visibleIds).toEqual([...LOCAL_GROUP_LABEL_IDS].sort());
+
+  const label = page.locator('.space-label.visible[data-id="group-andromeda"]');
+  await expect(label).toBeVisible();
+  const labelText = await label.textContent();
+  await label.click();
+  await expect(page.locator("#objectPanel")).toBeVisible();
+  await expect(page.locator("#panelTitle")).toHaveText(labelText ?? "");
+  await page.locator("#closePanel").click();
+  await expect(page.locator("#objectPanel")).toHaveAttribute("hidden", "");
+  await expect(page.locator("#objectPanel")).not.toHaveClass(/open/);
+  await expect.poll(() => page.locator("#objectPanel").evaluate(
+    (element) => getComputedStyle(element).opacity
+  )).toBe("0");
 };
 
 const screenshotMetrics = async (buffer) => {
@@ -483,7 +550,13 @@ test("touch gestures cannot pass a barrier and do not trap backward travel", asy
 });
 
 test("each real game victory unlocks the next route immediately", async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(600_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "hardwareConcurrency", {
+      configurable: true,
+      get: () => 12
+    });
+  });
   let errors = [];
   page.on("console", (message) => {
     const screenshotReadbackAdvisory = /GL Driver Message.*Performance.*ReadPixels/i.test(
@@ -500,6 +573,7 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   });
   await page.setViewportSize({ width: 1112, height: 625 });
   await startJourney(page);
+  const selectedQuality = await selectExpectedHighTierProfile(page);
 
   const navigation = page.getByRole("navigation", { name: "Масштабы" });
   const earthButton = navigation.getByRole("button", { name: "Земля" });
@@ -555,15 +629,22 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await expect(page.locator("#webFlow")).toHaveAttribute("inert", "");
 
   await page.setViewportSize({ width: 1920, height: 1080 });
+  await systemButton.click();
+  const desktopDprEvidence = await expectCanvasDpr(page, selectedQuality.profile);
+  await captureSettledStage({
+    page,
+    stage: 2,
+    path: "solar-system.png"
+  });
   await galaxyButton.click();
   await captureSettledStage({
     page,
     stage: 3,
-    path: "galaxy.png",
+    path: "milky-way.png",
     minimumOccupiedWidth: 0.5
   });
   await groupButton.click();
-  await expect(page.locator('.space-label[data-stage="4"]')).toHaveCount(0);
+  await expectLocalGroupAnnotations(page);
   await captureSettledStage({
     page,
     stage: 4,
@@ -613,15 +694,22 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     minimumWarmMagentaOrangeRatio: 0.08
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  await systemButton.click();
+  await captureSettledStage({
+    page,
+    stage: 2,
+    path: "solar-system-mobile.png"
+  });
   await galaxyButton.click();
   await captureSettledStage({
     page,
     stage: 3,
-    path: "galaxy-mobile.png",
+    path: "milky-way-mobile.png",
     minimumOccupiedWidth: 0.5
   });
   await groupButton.click();
-  await expect(page.locator('.space-label[data-stage="4"]')).toHaveCount(0);
+  await expectLocalGroupAnnotations(page);
+  const mobileDprEvidence = await expectCanvasDpr(page, selectedQuality.profile);
   await captureSettledStage({
     page,
     stage: 4,
@@ -665,6 +753,33 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   }
   await unknownButton.click();
   await expectStage(page, 6);
+  await page.locator("#starMaker").click();
+  await page.locator("#starMaker").click();
+  await page.mouse.click(55, 560);
+  await expect(page.locator("body")).toHaveClass(/final-star-lit/);
+  await expect(page.locator("#personalStars span")).toHaveCount(1);
+  await expect(page.locator("#couponModal")).toBeHidden();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: `${ARTIFACT_DIRECTORY}/unknown-star-mobile.png` });
+  await expect(page.locator("#couponModal")).toBeVisible({ timeout: 2_000 });
+  await page.locator("#couponClose").click();
+  await expect(page.locator("#couponModal")).toBeHidden();
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await unknownButton.click();
+  await expectStage(page, 6);
+  await settledFrame(page);
+  await expectCanvasDpr(page, selectedQuality.profile);
+  await expect(page.locator("#personalStars span")).toHaveCount(1);
+  await expect(page.locator("#couponModal")).toBeHidden();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: `${ARTIFACT_DIRECTORY}/unknown-star.png` });
+
+  console.info("DPR_EVIDENCE", JSON.stringify({
+    selected: selectedQuality,
+    desktop: desktopDprEvidence,
+    mobile: mobileDprEvidence
+  }));
   expect(errors).toEqual([]);
 });
 
