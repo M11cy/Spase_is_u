@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createShell, setLabelAccessibility } from "./create-shell.js";
+
+const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 const stages = Object.freeze([
   { id: "place", label: "Место", distance: "0 км" },
@@ -159,6 +163,21 @@ describe("createShell stage access", () => {
     expect(shell.webFlow.hidden).toBe(false);
     expect(shell.webFlow.hasAttribute("inert")).toBe(false);
     expect(shell.webFlow.hasAttribute("aria-hidden")).toBe(false);
+
+    shell.dispose();
+  });
+
+  it("renders the finale stars as circular radial lights without pixelated scaling", () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const shell = createShell({ root: document.querySelector("#app"), stages });
+    const starRule = stylesSource.match(/\.personal-stars span\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+
+    expect(shell.personalStars.classList.contains("personal-stars")).toBe(true);
+    expect(starRule).toMatch(/width:\s*8px/);
+    expect(starRule).toMatch(/height:\s*8px/);
+    expect(starRule).toMatch(/border-radius:\s*50%/);
+    expect(starRule).toMatch(/background:\s*radial-gradient\(/);
+    expect(starRule).not.toMatch(/image-rendering:\s*pixelated/);
 
     shell.dispose();
   });

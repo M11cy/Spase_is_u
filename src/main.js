@@ -35,6 +35,7 @@ import {
   resolveCameraPose
 } from "./scene/create-scene.js";
 import { createDeepSpacePostprocessing } from "./scene/deep-space-postprocessing.js";
+import { setupDeepSpacePhotoLifecycle } from "./scene/deep-space-photo-lifecycle.js";
 import { createEarthLayer } from "./scene/layers/earth.js";
 import { createCosmicWebLayer } from "./scene/layers/cosmic-web.js";
 import { createLocalGroupLayer } from "./scene/layers/local-group.js";
@@ -680,26 +681,18 @@ const introController = createIntroController({
 const [
   earthTextureResource,
   earthCloudResource,
-  milkyWayPhotoResource,
-  localGroupPhotoResource,
   ...solarTextureResources
 ] = await Promise.all([
   textureStore.load(earthTextureRoutes.surface, 0x16355f),
   textureStore.load(earthTextureRoutes.clouds, 0x000000),
-  textureStore.load(deepSpaceTextureRoutes.milkyWay, 0x02040a),
-  textureStore.load(deepSpaceTextureRoutes.localGroup, 0x02040a),
   ...solarTextureSources.map((url) => textureStore.load(url, 0x07101f))
 ]);
 const earthTexture = earthTextureResource.texture;
 const earthCloudTexture = earthCloudResource.texture;
-const milkyWayPhotoTexture = milkyWayPhotoResource.texture;
-const localGroupPhotoTexture = localGroupPhotoResource.texture;
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 [
   earthTextureResource,
   earthCloudResource,
-  milkyWayPhotoResource,
-  localGroupPhotoResource,
   ...solarTextureResources
 ].forEach(({ texture }) => {
   texture.anisotropy = maxAnisotropy;
@@ -1242,37 +1235,52 @@ const createGalaxyMarker = () => {
   material.opacity = 0.76;
   return marker;
 };
-const milkyWayLayer = createMilkyWayLayer({
-  THREE,
-  texture: milkyWayPhotoTexture,
-  annotations: galaxyAnnotationSources,
-  quality,
-  createMarker: createGalaxyMarker,
-  reducedMotion
+const deepSpacePhotoLifecycle = await setupDeepSpacePhotoLifecycle({
+  textureStore,
+  routes: deepSpaceTextureRoutes,
+  maxAnisotropy,
+  setup: ({
+    milkyWay: milkyWayPhotoTexture,
+    localGroup: localGroupPhotoTexture,
+    cosmicWeb: cosmicWebPhotoTexture
+  }) => {
+    const milkyWayLayer = createMilkyWayLayer({
+      THREE,
+      texture: milkyWayPhotoTexture,
+      annotations: galaxyAnnotationSources,
+      quality,
+      createMarker: createGalaxyMarker,
+      reducedMotion
+    });
+    const localGroupLayer = createLocalGroupLayer({
+      THREE,
+      texture: localGroupPhotoTexture,
+      annotations: localGroupAnnotationSources,
+      quality,
+      createMarker: createGalaxyMarker,
+      reducedMotion,
+    });
+    const cosmicWebLayer = createCosmicWebLayer({
+      THREE,
+      texture: cosmicWebPhotoTexture,
+      quality,
+      glowTexture: glowDiscTexture,
+      reducedMotion,
+      seed: 20260719
+    });
+
+    return Object.freeze({ milkyWayLayer, localGroupLayer, cosmicWebLayer });
+  }
 });
+const { milkyWayLayer, localGroupLayer, cosmicWebLayer } = deepSpacePhotoLifecycle.value;
 const galaxyAnnotations = Object.freeze(milkyWayLayer.interactive.map((marker) => marker.userData.annotation));
 group.add(milkyWayLayer.root);
 
-const localGroupLayer = createLocalGroupLayer({
-  THREE,
-  texture: localGroupPhotoTexture,
-  annotations: localGroupAnnotationSources,
-  quality,
-  createMarker: createGalaxyMarker,
-  reducedMotion,
-});
 const localGroupAnnotations = Object.freeze(localGroupLayer.interactive.map(
   (marker) => marker.userData.annotation
 ));
 group.add(localGroupLayer.root);
 
-const cosmicWebLayer = createCosmicWebLayer({
-  THREE,
-  quality,
-  glowTexture: glowDiscTexture,
-  reducedMotion,
-  seed: 20260719
-});
 group.add(cosmicWebLayer.root);
 
 const renderPipeline = createDeepSpacePostprocessing({
@@ -1805,8 +1813,7 @@ function disposeExperience() {
   sceneManager.dispose();
   earthTextureResource.release();
   earthCloudResource.release();
-  milkyWayPhotoResource.release();
-  localGroupPhotoResource.release();
+  deepSpacePhotoLifecycle.release();
   textureStore.dispose();
   glowDiscTexture.dispose();
 }
