@@ -80,12 +80,21 @@ describe("createPhotographicPlane", () => {
     const materialDispose = vi.spyOn(plane.mesh.material, "dispose");
     const textureDispose = vi.spyOn(texture, "dispose");
 
+    plane.setPresence(0.5);
+    plane.setParallax({ x: 4, y: -2 }, 0.25);
+    const opacityBeforeDispose = plane.mesh.material.opacity;
+    const positionBeforeDispose = plane.root.position.clone();
+
     plane.dispose();
+    plane.setPresence(1);
+    plane.setParallax({ x: -4, y: 2 }, 0.5);
     plane.dispose();
 
     expect(geometryDispose).toHaveBeenCalledOnce();
     expect(materialDispose).toHaveBeenCalledOnce();
     expect(textureDispose).not.toHaveBeenCalled();
+    expect(plane.mesh.material.opacity).toBe(opacityBeforeDispose);
+    expect(plane.root.position).toEqual(positionBeforeDispose);
   });
 
   it.each([

@@ -277,6 +277,8 @@ describe("createDeepSpacePostprocessing", () => {
     });
 
     pipeline.render();
+    pipeline.dispose();
+    pipeline.dispose();
 
     expect(pipeline.active).toBe(false);
     expect(renderer.render).toHaveBeenCalledOnce();
@@ -474,6 +476,9 @@ describe("createScene render pipeline lifecycle", () => {
     manager.resize({ width: 800, height: 600, pixelRatio: 1.25 });
     manager.dispose();
     manager.dispose();
+    manager.render();
+    manager.resize({ width: 640, height: 360, pixelRatio: 1 });
+    manager.update({});
 
     expect(renderPipeline.render).toHaveBeenCalledOnce();
     expect(renderer.render).not.toHaveBeenCalled();
@@ -487,6 +492,23 @@ describe("createScene render pipeline lifecycle", () => {
     expect(camera.aspect).toBe(800 / 600);
     expect(renderPipeline.dispose).toHaveBeenCalledOnce();
     expect(renderer.dispose).toHaveBeenCalledOnce();
+    expect(manager.hitTest({ clientX: 0, clientY: 0 })).toBeNull();
+  });
+
+  it("retains the last valid canvas size when resize dimensions are invalid", () => {
+    const { camera, manager, renderer } = createSceneHarness();
+    renderer.setPixelRatio.mockClear();
+    renderer.setSize.mockClear();
+    camera.updateProjectionMatrix.mockClear();
+
+    manager.resize({ width: 0, height: Number.NaN, pixelRatio: 0 });
+
+    expect(renderer.setPixelRatio).toHaveBeenCalledWith(1);
+    expect(renderer.setSize).toHaveBeenCalledWith(320, 180, false);
+    expect(camera.aspect).toBe(320 / 180);
+    expect(camera.updateProjectionMatrix).toHaveBeenCalledOnce();
+
+    manager.dispose();
   });
 
   it("preserves direct renderer fallback when no pipeline is supplied", () => {

@@ -1,557 +1,93 @@
-import { enableDeepSpaceBloom } from "../deep-space-postprocessing.js";
+import { createPhotographicPlane } from "./photographic-plane.js";
 import {
   clampPresence,
-  createSeededRandom,
-  disposeObjectTree,
   resolveParallax
 } from "./deep-space-utils.js";
-import { createCosmicTissue } from "./cosmic-tissue.js";
 
-const VOLUME = Object.freeze({ width: 1320, height: 760, depth: 190, centerZ: -235 });
-const VOLUME_BOUNDS = Object.freeze({
-  minX: -VOLUME.width / 2,
-  maxX: VOLUME.width / 2,
-  minY: -VOLUME.height / 2,
-  maxY: VOLUME.height / 2,
-  minZ: VOLUME.centerZ - VOLUME.depth / 2,
-  maxZ: VOLUME.centerZ + VOLUME.depth / 2
-});
-const PALETTE = Object.freeze([0x8b5cf6, 0xd946ef, 0xf472b6, 0xfbbf24]);
-const NODE_BUDGET = Object.freeze({ high: 120, medium: 92, economy: 68 });
-const FILAMENT_OPACITY = Object.freeze({ high: 0.48, medium: 0.44, economy: 0.40 });
-const HOT_NODE_RATIO = 0.1;
-const DEPTH_LAYERS = 3;
-const DEPTH_CENTERS = Object.freeze([-300, -235, -170]);
-const ANCHOR_COLUMNS = 6;
-const CLUSTER_ANCHORS = Object.freeze([
-  Object.freeze([-0.37, 0.36]), Object.freeze([-0.22, 0.36]),
-  Object.freeze([-0.07, 0.36]), Object.freeze([0.08, 0.36]),
-  Object.freeze([0.23, 0.36]), Object.freeze([0.38, 0.36]),
-  Object.freeze([-0.42, 0.12]), Object.freeze([-0.27, 0.12]),
-  Object.freeze([-0.12, 0.12]), Object.freeze([0.03, 0.12]),
-  Object.freeze([0.18, 0.12]), Object.freeze([0.33, 0.12]),
-  Object.freeze([-0.37, -0.12]), Object.freeze([-0.22, -0.12]),
-  Object.freeze([-0.07, -0.12]), Object.freeze([0.08, -0.12]),
-  Object.freeze([0.23, -0.12]), Object.freeze([0.38, -0.12]),
-  Object.freeze([-0.42, -0.36]), Object.freeze([-0.27, -0.36]),
-  Object.freeze([-0.12, -0.36]), Object.freeze([0.03, -0.36]),
-  Object.freeze([0.18, -0.36]), Object.freeze([0.33, -0.36])
-]);
-const DEPTH_FIELD_SPREAD = Object.freeze({ x: 46, y: 38, z: 18 });
-const GAUSSIAN_LIMIT = 2.5;
-const VOLUME_INSET = 1;
-const FILAMENT_SEGMENTS_PER_EDGE = 10;
-const NODE_POINTS_PER_TIER = Object.freeze({ high: 18, medium: 12, economy: 8 });
-const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
-  "Group",
-  "BufferGeometry",
-  "Float32BufferAttribute",
-  "Points",
-  "PointsMaterial",
-  "LineSegments",
-  "LineBasicMaterial",
-  "Color"
-]);
+const SUPPORTED_TIERS = Object.freeze(new Set(["high", "medium", "economy"]));
+const PRIMARY_PARALLAX_FACTOR = 0.12;
+const SECONDARY_PARALLAX_FACTOR = 0.05;
+const INTERACTIVE = Object.freeze([]);
 
-const isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
-
-const requireLayerInput = ({ THREE, quality, reducedMotion, seed }) => {
-  if (!THREE || REQUIRED_THREE_CONSTRUCTORS.some((name) => typeof THREE[name] !== "function")) {
+const requireLayerInput = ({ THREE, texture, quality, reducedMotion }) => {
+  if (!THREE || typeof THREE.Group !== "function") {
     throw new TypeError("Cosmic web layer requires a compatible THREE namespace");
   }
-  if (!quality || typeof quality !== "object"
-    || !["high", "medium", "economy"].includes(quality.tier)
-    || !isPositiveInteger(quality.cosmicWebPoints)) {
-    throw new TypeError("Cosmic web quality requires a supported tier and positive point budget");
+  if (!texture || texture.isTexture !== true) {
+    throw new TypeError("Cosmic web layer requires a THREE texture");
+  }
+  if (!quality || typeof quality !== "object" || !SUPPORTED_TIERS.has(quality.tier)) {
+    throw new TypeError("Cosmic web quality requires a supported tier");
   }
   if (typeof reducedMotion !== "boolean") {
     throw new TypeError("Cosmic web layer requires a reduced-motion preference");
   }
-  if (!Number.isSafeInteger(seed)) {
-    throw new TypeError("Cosmic web seed must be a safe integer");
-  }
 };
-
-const squaredDistance = (left, right) => (
-  (left[0] - right[0]) ** 2
-  + (left[1] - right[1]) ** 2
-  + (left[2] - right[2]) ** 2
-);
-
-const edgeKey = (left, right) => (
-  left < right ? `${left}:${right}` : `${right}:${left}`
-);
-
-const forkSeed = (seed, salt) => (seed >>> 0) ^ salt;
-
-const gaussian = (random) => {
-  const first = Math.max(Number.EPSILON, random());
-  return Math.sqrt(-2 * Math.log(first)) * Math.cos(Math.PI * 2 * random());
-};
-
-const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
-const boundedGaussian = (random) => clamp(gaussian(random), -GAUSSIAN_LIMIT, GAUSSIAN_LIMIT);
-
-const clampPositionToVolume = ([x, y, z]) => [
-  clamp(x, VOLUME_BOUNDS.minX, VOLUME_BOUNDS.maxX),
-  clamp(y, VOLUME_BOUNDS.minY, VOLUME_BOUNDS.maxY),
-  clamp(z, VOLUME_BOUNDS.minZ, VOLUME_BOUNDS.maxZ)
-];
-
-const clampPositionToInsetVolume = ([x, y, z]) => [
-  clamp(x, VOLUME_BOUNDS.minX + VOLUME_INSET, VOLUME_BOUNDS.maxX - VOLUME_INSET),
-  clamp(y, VOLUME_BOUNDS.minY + VOLUME_INSET, VOLUME_BOUNDS.maxY - VOLUME_INSET),
-  clamp(z, VOLUME_BOUNDS.minZ + VOLUME_INSET, VOLUME_BOUNDS.maxZ - VOLUME_INSET)
-];
-
-const clampPositionsToVolume = (positions) => {
-  const clamped = new Float32Array(positions.length);
-  for (let offset = 0; offset < positions.length; offset += 3) {
-    clamped[offset] = clamp(positions[offset], VOLUME_BOUNDS.minX, VOLUME_BOUNDS.maxX);
-    clamped[offset + 1] = clamp(
-      positions[offset + 1],
-      VOLUME_BOUNDS.minY,
-      VOLUME_BOUNDS.maxY
-    );
-    clamped[offset + 2] = clamp(
-      positions[offset + 2],
-      VOLUME_BOUNDS.minZ,
-      VOLUME_BOUNDS.maxZ
-    );
-  }
-  return clamped;
-};
-
-const insetPositionForSpread = ([x, y, z], spread) => [
-  clamp(
-    x,
-    VOLUME_BOUNDS.minX + spread.x * GAUSSIAN_LIMIT + VOLUME_INSET,
-    VOLUME_BOUNDS.maxX - spread.x * GAUSSIAN_LIMIT - VOLUME_INSET
-  ),
-  clamp(
-    y,
-    VOLUME_BOUNDS.minY + spread.y * GAUSSIAN_LIMIT + VOLUME_INSET,
-    VOLUME_BOUNDS.maxY - spread.y * GAUSSIAN_LIMIT - VOLUME_INSET
-  ),
-  clamp(
-    z,
-    VOLUME_BOUNDS.minZ + spread.z * GAUSSIAN_LIMIT + VOLUME_INSET,
-    VOLUME_BOUNDS.maxZ - spread.z * GAUSSIAN_LIMIT - VOLUME_INSET
-  )
-];
-
-const buildGraph = (seed, nodeBudget) => {
-  const random = createSeededRandom(seed);
-  const centers = CLUSTER_ANCHORS.map(([anchorX, anchorY], clusterIndex) => Object.freeze([
-    anchorX * VOLUME.width + boundedGaussian(random) * 18,
-    anchorY * VOLUME.height + boundedGaussian(random) * 14,
-    DEPTH_CENTERS[clusterIndex % DEPTH_LAYERS]
-  ]));
-  const nodes = Array.from({ length: nodeBudget }, (_, nodeIndex) => {
-    const center = centers[nodeIndex % centers.length];
-    return Object.freeze(clampPositionToVolume([
-      center[0] + boundedGaussian(random) * 38,
-      center[1] + boundedGaussian(random) * 28,
-      center[2] + boundedGaussian(random) * 9
-    ]));
-  });
-  const edgeKeys = new Set();
-  const maximumEdgeCount = nodeBudget * 3;
-  const addEdge = (left, right) => {
-    const key = edgeKey(left, right);
-    if (edgeKeys.has(key) || edgeKeys.size < maximumEdgeCount) edgeKeys.add(key);
-  };
-
-  for (let nodeIndex = 1; nodeIndex < nodes.length; nodeIndex += 1) {
-    let nearestIndex = 0;
-    let nearestDistance = squaredDistance(nodes[nodeIndex], nodes[0]);
-    for (let candidateIndex = 1; candidateIndex < nodeIndex; candidateIndex += 1) {
-      const distance = squaredDistance(nodes[nodeIndex], nodes[candidateIndex]);
-      if (distance < nearestDistance) {
-        nearestIndex = candidateIndex;
-        nearestDistance = distance;
-      }
-    }
-    addEdge(nodeIndex, nearestIndex);
-  }
-
-  nodes.forEach((node, nodeIndex) => {
-    const nearest = nodes
-      .map((candidate, candidateIndex) => Object.freeze({
-        candidateIndex,
-        distance: squaredDistance(node, candidate)
-      }))
-      .filter(({ candidateIndex }) => candidateIndex !== nodeIndex)
-      .sort((left, right) => left.distance - right.distance || left.candidateIndex - right.candidateIndex)
-      .slice(0, 2);
-    nearest.forEach(({ candidateIndex }) => addEdge(nodeIndex, candidateIndex));
-  });
-
-  const nodesPerAnchor = Math.floor(nodeBudget / CLUSTER_ANCHORS.length);
-  const bridgeLanes = Math.min(3, nodesPerAnchor);
-  const connectAnchors = (fromAnchor, toAnchor) => {
-    for (let lane = 0; lane < bridgeLanes; lane += 1) {
-      const from = fromAnchor + lane * CLUSTER_ANCHORS.length;
-      const to = toAnchor + lane * CLUSTER_ANCHORS.length;
-      if (from < nodes.length && to < nodes.length) addEdge(from, to);
-    }
-  };
-  CLUSTER_ANCHORS.forEach((_, anchorIndex) => {
-    const row = Math.floor(anchorIndex / ANCHOR_COLUMNS);
-    const column = anchorIndex % ANCHOR_COLUMNS;
-    if (column + 1 < ANCHOR_COLUMNS) connectAnchors(anchorIndex, anchorIndex + 1);
-    if (row + 1 < CLUSTER_ANCHORS.length / ANCHOR_COLUMNS) {
-      connectAnchors(anchorIndex, anchorIndex + ANCHOR_COLUMNS);
-      const diagonalColumn = row % 2 === 0 ? column + 1 : column - 1;
-      if (diagonalColumn >= 0 && diagonalColumn < ANCHOR_COLUMNS) {
-        connectAnchors(anchorIndex, anchorIndex + ANCHOR_COLUMNS + diagonalColumn - column);
-      }
-    }
-  });
-
-  const edges = [...edgeKeys]
-    .map((key) => Object.freeze(key.split(":").map(Number)))
-    .sort(([leftA, leftB], [rightA, rightB]) => leftA - rightA || leftB - rightB);
-  return Object.freeze({
-    nodes: Object.freeze(nodes),
-    edges: Object.freeze(edges)
-  });
-};
-
-const pushColor = (target, color, intensity) => {
-  target.push(color.r * intensity, color.g * intensity, color.b * intensity);
-};
-
-const createGeometry = (THREE, positions, colors) => {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(clampPositionsToVolume(positions), 3)
-  );
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  return geometry;
-};
-
-const sampleCubicBezier = (start, controlOne, controlTwo, end, progress) => {
-  const inverseProgress = 1 - progress;
-  const startWeight = inverseProgress ** 3;
-  const controlOneWeight = 3 * inverseProgress ** 2 * progress;
-  const controlTwoWeight = 3 * inverseProgress * progress ** 2;
-  const endWeight = progress ** 3;
-  return start.map((value, axis) => (
-    value * startWeight
-    + controlOne[axis] * controlOneWeight
-    + controlTwo[axis] * controlTwoWeight
-    + end[axis] * endWeight
-  ));
-};
-
-const createEdgeCurve = (start, end, edgeIndex) => {
-  const deltaX = end[0] - start[0];
-  const deltaY = end[1] - start[1];
-  const planarLength = Math.max(1, Math.hypot(deltaX, deltaY));
-  const phase = (edgeIndex + 1) * 2.399963229728653;
-  const chordLength = Math.max(0.001, Math.hypot(
-    deltaX,
-    deltaY,
-    end[2] - start[2]
-  ));
-  const lateralMagnitude = Math.min(
-    24,
-    chordLength * 0.32,
-    Math.max(9, planarLength * 0.16)
-  );
-  const lateralDirection = Math.sin(phase) >= 0 ? 1 : -1;
-  const normalX = -deltaY / planarLength * lateralDirection;
-  const normalY = deltaX / planarLength * lateralDirection;
-  const verticalMagnitude = Math.min(
-    chordLength * 0.2,
-    4 + Math.abs(Math.cos(phase)) * 7
-  );
-  const controlOne = clampPositionToInsetVolume([
-    start[0] + deltaX / 3 + normalX * lateralMagnitude,
-    start[1] + deltaY / 3 + normalY * lateralMagnitude,
-    start[2] + (end[2] - start[2]) / 3 + Math.sin(phase * 1.7) * verticalMagnitude
-  ]);
-  const controlTwo = clampPositionToInsetVolume([
-    start[0] + deltaX * 2 / 3 + normalX * lateralMagnitude * (0.68 + Math.abs(Math.cos(phase)) * 0.24),
-    start[1] + deltaY * 2 / 3 + normalY * lateralMagnitude * (0.68 + Math.abs(Math.cos(phase)) * 0.24),
-    start[2] + (end[2] - start[2]) * 2 / 3 + Math.cos(phase * 1.3) * verticalMagnitude
-  ]);
-  return Object.freeze({
-    sample: (progress) => sampleCubicBezier(start, controlOne, controlTwo, end, progress)
-  });
-};
-
-const createEdgeCurves = (graph) => Object.freeze(graph.edges.map(([from, to], edgeIndex) => (
-  createEdgeCurve(graph.nodes[from], graph.nodes[to], edgeIndex)
-)));
-
-const createFilaments = (THREE, graph, curves, tier) => {
-  const positions = [];
-  const colors = [];
-  const violet = new THREE.Color(PALETTE[0]);
-  const magenta = new THREE.Color(PALETTE[1]);
-  graph.edges.forEach((_, edgeIndex) => {
-    const color = edgeIndex % 5 === 0 ? magenta : violet;
-    const intensity = edgeIndex < 2 ? 1 : 3.1;
-    for (let segmentIndex = 0; segmentIndex < FILAMENT_SEGMENTS_PER_EDGE; segmentIndex += 1) {
-      positions.push(
-        ...curves[edgeIndex].sample(segmentIndex / FILAMENT_SEGMENTS_PER_EDGE),
-        ...curves[edgeIndex].sample((segmentIndex + 1) / FILAMENT_SEGMENTS_PER_EDGE)
-      );
-      pushColor(colors, color, intensity);
-      pushColor(colors, color, intensity);
-    }
-  });
-  const material = new THREE.LineBasicMaterial({
-    transparent: true,
-    opacity: FILAMENT_OPACITY[tier],
-    depthWrite: false,
-    depthTest: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false
-  });
-  const filaments = new THREE.LineSegments(createGeometry(THREE, positions, colors), material);
-  filaments.name = "cosmic-web-filaments";
-  filaments.renderOrder = 3;
-  return filaments;
-};
-
-const createParticles = (THREE, graph, curves, glowTexture, count, seed) => {
-  const random = createSeededRandom(forkSeed(seed, 0x5f356495));
-  const positions = [];
-  const colors = [];
-  const violet = new THREE.Color(PALETTE[0]);
-  const magenta = new THREE.Color(PALETTE[1]);
-  const pink = new THREE.Color(PALETTE[2]);
-  for (let index = 0; index < count; index += 1) {
-    const edgeIndex = index % graph.edges.length;
-    const sampleIndex = Math.floor(index / graph.edges.length);
-    const samplesOnEdge = Math.ceil((count - edgeIndex) / graph.edges.length);
-    const [from, to] = graph.edges[edgeIndex];
-    const start = graph.nodes[from];
-    const end = graph.nodes[to];
-    const progress = (sampleIndex + random()) / samplesOnEdge;
-    const deltaX = end[0] - start[0];
-    const deltaY = end[1] - start[1];
-    const planarLength = Math.max(1, Math.hypot(deltaX, deltaY));
-    const strand = sampleIndex % 3 - 1;
-    const strandWidth = strand * (2.8 + random() * 2.4);
-    const spread = 1.4 + random() * 2.2;
-    const basePosition = curves[edgeIndex].sample(progress);
-    positions.push(
-      basePosition[0] - deltaY / planarLength * strandWidth
-        + boundedGaussian(random) * spread,
-      basePosition[1] + deltaX / planarLength * strandWidth
-        + boundedGaussian(random) * spread,
-      basePosition[2] + boundedGaussian(random) * spread * 0.7
-    );
-    const color = index % 7 === 0 ? pink : index % 3 === 0 ? magenta : violet;
-    pushColor(colors, color, index % 11 === 0 ? 2.6 : 1.45 + random() * 0.9);
-  }
-  const material = new THREE.PointsMaterial({
-    map: glowTexture,
-    size: 11.4,
-    transparent: true,
-    opacity: 0.98,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false
-  });
-  const particles = new THREE.Points(createGeometry(THREE, positions, colors), material);
-  particles.name = "cosmic-web-particles";
-  particles.renderOrder = 5;
-  return particles;
-};
-
-const createNodes = (THREE, graph, glowTexture, quality, seed) => {
-  const random = createSeededRandom(forkSeed(seed, 0x1bf5a9d3));
-  const pointsPerNode = NODE_POINTS_PER_TIER[quality.tier];
-  const positions = [];
-  const colors = [];
-  const magenta = new THREE.Color(PALETTE[1]);
-  const pink = new THREE.Color(PALETTE[2]);
-  graph.nodes.forEach((node, nodeIndex) => {
-    for (let pointIndex = 0; pointIndex < pointsPerNode; pointIndex += 1) {
-      const spread = pointIndex === 0 ? 0 : 3.2 + random() * 4.8;
-      const offsetX = boundedGaussian(random) * spread;
-      const offsetY = boundedGaussian(random) * spread;
-      const offsetZ = boundedGaussian(random) * spread * 0.62;
-      positions.push(node[0] + offsetX, node[1] + offsetY, node[2] + offsetZ);
-      const color = pointIndex === 0 ? pink : magenta;
-      const intensity = nodeIndex === 0 && pointIndex === 0
-        ? 1
-        : pointIndex < 2 ? 2 : 1.2 + random() * 0.6;
-      pushColor(colors, color, intensity);
-    }
-  });
-  const material = new THREE.PointsMaterial({
-    map: glowTexture,
-    size: 11.2,
-    transparent: true,
-    opacity: 0.96,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false
-  });
-  const nodes = new THREE.Points(createGeometry(THREE, positions, colors), material);
-  nodes.name = "cosmic-web-nodes";
-  nodes.renderOrder = 6;
-  nodes.userData.cluster = Object.freeze({ pointsPerNode, seed });
-  return enableDeepSpaceBloom(nodes);
-};
-
-const selectHotNodeIndices = (graph, hotNodeCount) => {
-  const degree = graph.nodes.map(() => 0);
-  graph.edges.forEach(([from, to]) => {
-    degree[from] += 1;
-    degree[to] += 1;
-  });
-  return Object.freeze(degree
-    .map((connections, nodeIndex) => Object.freeze({ connections, nodeIndex }))
-    .sort((left, right) => right.connections - left.connections || left.nodeIndex - right.nodeIndex)
-    .slice(0, hotNodeCount)
-    .map(({ nodeIndex }) => nodeIndex)
-    .sort((left, right) => left - right));
-};
-
-const createHotNodes = (THREE, graph, glowTexture, hotNodeCount) => {
-  const indices = selectHotNodeIndices(graph, hotNodeCount);
-  const positions = indices.flatMap((nodeIndex) => graph.nodes[nodeIndex]);
-  const gold = new THREE.Color(PALETTE[3]);
-  const colors = indices.flatMap(() => [gold.r, gold.g, gold.b]);
-  const material = new THREE.PointsMaterial({
-    map: glowTexture,
-    size: 16,
-    transparent: true,
-    opacity: 1,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false
-  });
-  const hotNodes = new THREE.Points(createGeometry(THREE, positions, colors), material);
-  hotNodes.name = "cosmic-web-hot-nodes";
-  hotNodes.renderOrder = 7;
-  hotNodes.userData.hotNodes = Object.freeze({ indices, paletteIndex: 3 });
-  return enableDeepSpaceBloom(hotNodes);
-};
-
-const createDepthField = (THREE, graph, glowTexture, pointBudget, seed) => {
-  const random = createSeededRandom(forkSeed(seed, 0x3c6ef372));
-  const count = Math.max(240, Math.round(pointBudget * 0.12));
-  const positions = [];
-  const colors = [];
-  const violet = new THREE.Color(PALETTE[0]);
-  const pink = new THREE.Color(PALETTE[2]);
-  for (let index = 0; index < count; index += 1) {
-    const node = graph.nodes[index % graph.nodes.length];
-    const center = insetPositionForSpread(node, DEPTH_FIELD_SPREAD);
-    positions.push(
-      center[0] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.x,
-      center[1] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.y,
-      center[2] + boundedGaussian(random) * DEPTH_FIELD_SPREAD.z
-    );
-    const color = index % 9 === 0 ? pink : violet;
-    pushColor(colors, color, 1 + random() * 0.6);
-  }
-  const material = new THREE.PointsMaterial({
-    map: glowTexture,
-    size: 5.2,
-    transparent: true,
-    opacity: 0.65,
-    alphaTest: 0.01,
-    depthWrite: false,
-    depthTest: true,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false
-  });
-  const depth = new THREE.Points(createGeometry(THREE, positions, colors), material);
-  depth.name = "cosmic-web-depth";
-  depth.renderOrder = 1;
-  return depth;
-};
-
-export const createCosmicWebLayer = (input) => {
+export const createCosmicWebLayer = (input = {}) => {
   const {
     THREE,
+    texture,
     quality,
-    glowTexture = null,
-    reducedMotion,
-    seed
-  } = input ?? {};
-  requireLayerInput({ THREE, quality, reducedMotion, seed });
+    reducedMotion
+  } = input;
+  requireLayerInput({ THREE, texture, quality, reducedMotion });
 
-  const nodeBudget = NODE_BUDGET[quality.tier];
-  const hotNodeCount = Math.round(nodeBudget * HOT_NODE_RATIO);
-  const graph = buildGraph(seed, nodeBudget);
-  const curves = createEdgeCurves(graph);
-  const tissue = createCosmicTissue({ THREE, tier: quality.tier, seed, volume: VOLUME });
+  const primary = createPhotographicPlane({
+    THREE,
+    texture,
+    name: "cosmic-web-photo-primary",
+    width: 1760,
+    aspect: 16 / 9,
+    depth: -235,
+    opacity: 0.98,
+    renderOrder: 2
+  });
+  const secondary = createPhotographicPlane({
+    THREE,
+    texture,
+    name: "cosmic-web-photo-secondary",
+    width: 1880,
+    aspect: 16 / 9,
+    depth: -300,
+    opacity: 0.16,
+    renderOrder: 1
+  });
+  secondary.mesh.position.set(7, -4, 0);
+  secondary.mesh.scale.set(1.025, 1.025, 1);
+  secondary.mesh.rotation.z = -0.012;
+
   const root = new THREE.Group();
   root.name = "cosmic-web-layer";
   root.visible = false;
-  root.userData.structure = Object.freeze({
-    volume: VOLUME,
-    nodeCount: graph.nodes.length,
-    palette: PALETTE,
-    nodeBudget,
-    hotNodeCount,
-    depthLayers: DEPTH_LAYERS,
-    seed,
-    tissue: tissue.metadata,
-    connection: "staggered-lattice-spanning"
-  });
-  const filaments = createFilaments(THREE, graph, curves, quality.tier);
-  const particles = createParticles(THREE, graph, curves, glowTexture, quality.cosmicWebPoints, seed);
-  const nodes = createNodes(THREE, graph, glowTexture, quality, seed);
-  const hotNodes = createHotNodes(THREE, graph, glowTexture, hotNodeCount);
-  const depth = createDepthField(THREE, graph, glowTexture, quality.cosmicWebPoints, seed);
-  const fadedObjects = Object.freeze([depth, filaments, particles, nodes, hotNodes]);
-  fadedObjects.forEach((object) => {
-    object.userData.baseOpacity = object.material.opacity;
-  });
-  root.add(tissue.root, ...fadedObjects);
+  root.add(secondary.root, primary.root);
   let disposed = false;
-
-  const setPresence = (value) => {
-    if (disposed) return;
-    const presence = clampPresence(value);
-    root.visible = presence > 0.01;
-    tissue.setPresence(presence);
-    fadedObjects.forEach((object) => {
-      object.material.opacity = object.userData.baseOpacity * presence;
-    });
-  };
 
   return Object.freeze({
     root,
-    interactive: Object.freeze([]),
-    graph,
-    setPresence,
+    interactive: INTERACTIVE,
+    setPresence: (value) => {
+      if (disposed) return;
+      const presence = clampPresence(value);
+      root.visible = presence > 0.01;
+      primary.setPresence(presence);
+      secondary.setPresence(presence);
+    },
     updateParallax: (pointer = {}) => {
+      if (disposed) {
+        return Object.freeze({ x: primary.root.position.x, y: primary.root.position.y });
+      }
       const { x, y } = pointer && typeof pointer === "object" ? pointer : {};
       const offset = resolveParallax({ x, y, reducedMotion, tier: quality.tier });
-      root.position.x = offset.x;
-      root.position.y = offset.y;
-      tissue.setParallax(offset);
-      return Object.freeze({ x: root.position.x, y: root.position.y });
+      primary.setParallax(offset, PRIMARY_PARALLAX_FACTOR);
+      secondary.setParallax(offset, SECONDARY_PARALLAX_FACTOR);
+      return Object.freeze({ x: primary.root.position.x, y: primary.root.position.y });
     },
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      tissue.dispose();
-      disposeObjectTree(root);
+      primary.dispose();
+      secondary.dispose();
+      root.clear();
     }
   });
 };
