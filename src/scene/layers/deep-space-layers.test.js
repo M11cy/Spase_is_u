@@ -55,9 +55,9 @@ const measureProjectedGraphCoverage = ({ graph, camera, columns = 12, rows = 8 }
 
 const MILKY_WAY_MARKER_POSITIONS = Object.freeze({
   "galactic-center": Object.freeze([0, 0, 1]),
-  "orion-arm": Object.freeze([54.6, -8.775, 1]),
-  "perseus-arm": Object.freeze([-89.7, 10.96875, 1]),
-  "galactic-halo": Object.freeze([11.7, 70.2, 1])
+  "orion-arm": Object.freeze([70, -11.25, 1]),
+  "perseus-arm": Object.freeze([-115, 14.0625, 1]),
+  "galactic-halo": Object.freeze([15, 90, 1])
 });
 
 const expectFrozenLayerContract = (layer) => {
@@ -80,7 +80,7 @@ describe("createMilkyWayLayer", () => {
 
     expectFrozenLayerContract(layer);
     expect(photo.material.map).toBe(texture);
-    expect(photo.geometry.parameters).toMatchObject({ width: 390, height: 219.375 });
+    expect(photo.geometry.parameters).toMatchObject({ width: 500, height: 281.25 });
     expect(photo.material).toMatchObject({
       opacity: 1,
       transparent: true,

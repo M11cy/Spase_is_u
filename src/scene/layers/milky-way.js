@@ -10,9 +10,9 @@ const PARALLAX_FACTOR = 0.18;
 const SUPPORTED_TIERS = Object.freeze(new Set(["high", "medium", "economy"]));
 const PHOTO_ANCHORS = Object.freeze({
   "galactic-center": Object.freeze([0, 0, 1]),
-  "orion-arm": Object.freeze([54.6, -8.775, 1]),
-  "perseus-arm": Object.freeze([-89.7, 10.96875, 1]),
-  "galactic-halo": Object.freeze([11.7, 70.2, 1])
+  "orion-arm": Object.freeze([70, -11.25, 1]),
+  "perseus-arm": Object.freeze([-115, 14.0625, 1]),
+  "galactic-halo": Object.freeze([15, 90, 1])
 });
 
 const isPosition = (position) => Array.isArray(position)
@@ -93,7 +93,7 @@ export const createMilkyWayLayer = (input = {}) => {
     THREE,
     texture,
     name: "milky-way-photo",
-    width: 390,
+    width: 500,
     aspect: 16 / 9,
     depth: ROOT_DEPTH,
     opacity: 1,
