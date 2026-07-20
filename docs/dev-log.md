@@ -429,10 +429,11 @@ Related: [[2026-07-19-deep-space-visual-overhaul-design]], [[2026-07-20-procedur
 ### Gates and reviews
 
 - Implementation: `12ce002190ec720da2ee2e455f468c404bb53afa`.
-- Unit `186/186`; overall coverage `88.62 / 77.93 / 86.09 / 90.57`; scene/layers `96.53 / 87.31 / 97.10 / 97.67`.
+- Unit `210/210`; overall coverage `89.19 / 80.10 / 86.09 / 90.89`; scene/layers `97.77 / 92.44 / 97.10 / 98.36`. Global branches improved from `611/784` to `628/784` with test-only behavior contracts.
 - Build PASS (`50` modules), audit `0 vulnerabilities`, diff-check clean.
 - Full E2E startup audit: first run `4/5` had one blank-page startup flake; isolated test passed `1/1`, then unchanged full suite passed `5/5` in `3.5m`.
 - Independent spec and quality reviews: Approved, no Critical/Important. Accepted Minors: fixed-z public factory assumption, two diagonal extrema instead of four, subtle warm/orange accents and some geometric microcells on close inspection.
+- Coverage hardening: `6486681` (`test: cover cosmic tissue branch contracts`); test-quality re-review Approved with no findings after the artificial fallback assertion was removed.
 
 ![[task-7-artifacts/galaxy.png]]
 ![[task-7-artifacts/local-group.png]]

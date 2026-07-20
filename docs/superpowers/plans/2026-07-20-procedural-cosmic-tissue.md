@@ -360,12 +360,13 @@ git commit -m "docs: record procedural cosmic tissue acceptance"
 ### Final verification
 
 - Implementation commit: `12ce002190ec720da2ee2e455f468c404bb53afa` (`feat: add procedural cosmic tissue`).
-- Unit: `186/186`, `12/12` files.
-- Coverage overall: statements `88.62%`, branches `77.93%`, functions `86.09%`, lines `90.57%`; scene/layers aggregate `96.53% / 87.31% / 97.10% / 97.67%`.
+- Unit: `210/210`, `12/12` files.
+- Coverage overall: statements `89.19%`, branches `80.10%`, functions `86.09%`, lines `90.89%`; scene/layers aggregate `97.77% / 92.44% / 97.10% / 98.36%`. The mandatory global `>=80%` branch gate was raised from baseline `611/784` to `628/784` with behavior-focused validation/lifecycle tests only.
 - Build: PASS, `50` modules; known production chunk advisory `1009.84 kB` remains non-blocking.
 - Audit: `0 vulnerabilities`; `git diff --check`: clean.
 - Full E2E: first run `4/5` because one test opened a blank page before app startup; its isolated rerun passed `1/1` in `29.2s`. Unchanged full rerun passed `5/5` in `3.5m`, including victory/pixels and zero console/WebGL errors.
 - Independent Task5C spec and quality reviews: **Approved**, Critical `0`, Important `0`. Accepted code Minors: the public tissue factory assumes the current fixed z-volume, and the extrema test samples two separable diagonals rather than all four corners.
+- Coverage hardening commit: `6486681` (`test: cover cosmic tissue branch contracts`); independent test re-review: **Approved**, no findings after removing an artificial unreachable-fallback assertion.
 
 ![[task-7-artifacts/galaxy.png]]
 ![[task-7-artifacts/local-group.png]]
