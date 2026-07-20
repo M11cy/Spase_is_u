@@ -57,3 +57,32 @@ Implemented [[2026-07-20-ultra-photographic-space#Task 6 Load photos safely and 
 ## Checkpoint
 
 `fix: load sharp photo layers and round finale stars`
+
+## External review follow-up — atomic layer construction
+
+> [!failure] Review RED
+> The follow-up lifecycle suite failed 5 contracts: invalid boundaries reached `textureStore.load` 42 times, setup had no cleanup registration context, constructor failures at the second and third layers could not dispose previously created layers, and `main.js` registered no layer cleanups.
+
+- The helper now validates its complete boundary before acquisition: `textureStore.load`, exact non-empty Milky Way / Local Group / Cosmic Web route strings, finite positive anisotropy, and the setup function.
+- The setup context exposes a frozen `registerCleanup` API. `main.js` registers each layer immediately after construction.
+- Setup failure runs registered disposers once in reverse order, then releases all texture handles once. A throwing disposer cannot interrupt the remaining unwind or replace the original setup error.
+- Successful setup disarms and drops setup-only cleanup callbacks. Normal `sceneManager.dispose` therefore remains the sole owner of layer disposal, while the photo lifecycle only releases store handles.
+- Frozen input routes remain unchanged throughout acquisition and setup.
+
+> [!success] Follow-up GREEN
+> Constructor failure at Local Group disposes Milky Way once; constructor failure at Cosmic Web disposes Local Group then Milky Way once each. Both paths release all three photo handles once. A success-path test proves lifecycle release does not invoke layer disposal, and the cleanup-throws test proves reverse order `[2, 1, 0]`, original error preservation, and complete handle cleanup.
+
+### Follow-up verification
+
+- Focused integration: 4 files, 76/76 passed before the final cleanup-throws coverage case; focused helper after review: 12/12 passed.
+- Full unit: 15 files, 187/187 passed.
+- Coverage: statements `86.73%`, branches `80.38%`, functions `84.46%`, lines `88.59%`; lifecycle helper `96.42% / 92.30% / 100% / 98%`.
+- Production build: passed with only the existing large-chunk advisory.
+- Dependency audit: 0 vulnerabilities.
+- Patch hygiene: `git diff --check` passed.
+- Browser smoke: the rebuilt app exposed the complete intro and Cosmic Web DOM, rendered its canvas, and produced an empty browser error log; the missing-texture error was absent.
+- Independent re-review: `APPROVED`, no remaining correctness, cleanup, immutability, or coverage findings.
+
+### Follow-up checkpoint
+
+`fix: dispose partial deep-space setup`

@@ -1243,7 +1243,7 @@ const deepSpacePhotoLifecycle = await setupDeepSpacePhotoLifecycle({
     milkyWay: milkyWayPhotoTexture,
     localGroup: localGroupPhotoTexture,
     cosmicWeb: cosmicWebPhotoTexture
-  }) => {
+  }, { registerCleanup }) => {
     const milkyWayLayer = createMilkyWayLayer({
       THREE,
       texture: milkyWayPhotoTexture,
@@ -1252,6 +1252,7 @@ const deepSpacePhotoLifecycle = await setupDeepSpacePhotoLifecycle({
       createMarker: createGalaxyMarker,
       reducedMotion
     });
+    registerCleanup(() => milkyWayLayer.dispose());
     const localGroupLayer = createLocalGroupLayer({
       THREE,
       texture: localGroupPhotoTexture,
@@ -1260,6 +1261,7 @@ const deepSpacePhotoLifecycle = await setupDeepSpacePhotoLifecycle({
       createMarker: createGalaxyMarker,
       reducedMotion,
     });
+    registerCleanup(() => localGroupLayer.dispose());
     const cosmicWebLayer = createCosmicWebLayer({
       THREE,
       texture: cosmicWebPhotoTexture,
@@ -1268,6 +1270,7 @@ const deepSpacePhotoLifecycle = await setupDeepSpacePhotoLifecycle({
       reducedMotion,
       seed: 20260719
     });
+    registerCleanup(() => cosmicWebLayer.dispose());
 
     return Object.freeze({ milkyWayLayer, localGroupLayer, cosmicWebLayer });
   }
