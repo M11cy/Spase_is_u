@@ -448,7 +448,8 @@ describe("createCosmicWebLayer", () => {
     expect(primary.parent.position.z).toBe(-235);
     expect(secondary.parent.position.z).toBe(-300);
     expect(primary.material).toMatchObject({
-      opacity: 0.98,
+      opacity: 0.17,
+      fog: false,
       transparent: true,
       depthWrite: false,
       depthTest: false,
@@ -456,7 +457,8 @@ describe("createCosmicWebLayer", () => {
       blending: THREE.NormalBlending
     });
     expect(secondary.material).toMatchObject({
-      opacity: 0.16,
+      opacity: 0.034,
+      fog: false,
       transparent: true,
       depthWrite: false,
       depthTest: false,
@@ -480,8 +482,8 @@ describe("createCosmicWebLayer", () => {
     expect(layer.root.visible).toBe(false);
     layer.setPresence(0.5);
     expect(layer.root.visible).toBe(true);
-    expect(primary.material.opacity).toBeCloseTo(0.49, 8);
-    expect(secondary.material.opacity).toBeCloseTo(0.08, 8);
+    expect(primary.material.opacity).toBeCloseTo(0.085, 8);
+    expect(secondary.material.opacity).toBeCloseTo(0.017, 8);
 
     expect(layer.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0.192, y: -0.132 });
     expect(primary.parent.position.toArray()).toEqual([0.192, -0.132, -235]);

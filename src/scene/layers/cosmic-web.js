@@ -39,7 +39,7 @@ export const createCosmicWebLayer = (input = {}) => {
     width: 1760,
     aspect: 16 / 9,
     depth: -235,
-    opacity: 0.98,
+    opacity: 0.17,
     renderOrder: 2
   });
   const secondary = createPhotographicPlane({
@@ -49,9 +49,11 @@ export const createCosmicWebLayer = (input = {}) => {
     width: 1880,
     aspect: 16 / 9,
     depth: -300,
-    opacity: 0.16,
+    opacity: 0.034,
     renderOrder: 1
   });
+  primary.mesh.material.fog = false;
+  secondary.mesh.material.fog = false;
   secondary.mesh.position.set(7, -4, 0);
   secondary.mesh.scale.set(1.025, 1.025, 1);
   secondary.mesh.rotation.z = -0.012;
