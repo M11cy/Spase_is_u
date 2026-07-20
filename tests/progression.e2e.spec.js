@@ -45,6 +45,8 @@ const screenshotMetrics = async (buffer) => {
   const pixelsByCell = new Uint32Array(gridCellCount);
   let luminousPixels = 0;
   let purpleMagentaPixels = 0;
+  let nearBlackPixels = 0;
+  let warmMagentaOrangePixels = 0;
   for (let offset = 0, pixel = 0; offset < data.length; offset += info.channels, pixel += 1) {
     const red = data[offset];
     const green = data[offset + 1];
@@ -58,6 +60,15 @@ const screenshotMetrics = async (buffer) => {
     const gridCell = gridRow * gridColumns + gridColumn;
     pixelsByCell[gridCell] += 1;
     if (luminance >= 12) luminousPixels += 1;
+    if (luminance <= 10) nearBlackPixels += 1;
+    const isWarmMagentaOrange = luminance >= 18
+      && saturation >= 10
+      && red >= 18
+      && (
+        (blue >= green * 1.25 && red >= green * 1.10)
+        || (red >= green * 1.14 && green >= blue * 0.62 && blue >= green * 0.24)
+      );
+    if (isWarmMagentaOrange) warmMagentaOrangePixels += 1;
     if (red >= 12 && blue >= 18 && red >= green * 1.22 && blue >= green * 1.32) {
       purpleMagentaPixels += 1;
       purplePixelsByCell[gridCell] += 1;
@@ -104,6 +115,8 @@ const screenshotMetrics = async (buffer) => {
   return Object.freeze({
     luminousRatio: luminousPixels / pixelCount,
     purpleMagentaRatio: purpleMagentaPixels / pixelCount,
+    nearBlackRatio: nearBlackPixels / pixelCount,
+    warmMagentaOrangeRatio: warmMagentaOrangePixels / pixelCount,
     purpleGridCoverage: occupiedGridRatio(purplePixelsByCell),
     brightGridCoverage: occupiedGridRatio(brightPixelsByCell),
     occupiedWidthRatio: firstOccupiedColumn < 0
@@ -123,7 +136,9 @@ const captureSettledStage = async ({
   minimumPurpleGridCoverage = 0,
   minimumBrightGridCoverage = 0,
   minimumOccupiedWidth = 0,
-  minimumBrightComponents = 0
+  minimumBrightComponents = 0,
+  maximumNearBlackRatio = 1,
+  minimumWarmMagentaOrangeRatio = 0
 }) => {
   await expectStage(page, stage);
   await settledFrame(page);
@@ -144,6 +159,14 @@ const captureSettledStage = async ({
   }
   if (minimumBrightComponents > 0) {
     expect(metrics.brightComponentCount).toBeGreaterThan(minimumBrightComponents);
+  }
+  if (maximumNearBlackRatio < 1) {
+    expect(metrics.nearBlackRatio).toBeLessThanOrEqual(maximumNearBlackRatio);
+  }
+  if (minimumWarmMagentaOrangeRatio > 0) {
+    expect(metrics.warmMagentaOrangeRatio).toBeGreaterThanOrEqual(
+      minimumWarmMagentaOrangeRatio
+    );
   }
   return metrics;
 };
@@ -190,13 +213,18 @@ const webLevels = Object.freeze([
   ]) })
 ]);
 
-const solveWebLevel = async (page, definition, { final = false } = {}) => {
+const solveWebLevel = async (page, definition, { final = false, nextCount = null } = {}) => {
   const flow = page.locator("#webFlow");
   const tiles = flow.locator(".web-flow__tile");
   await expect(tiles).toHaveCount(definition.count);
 
   for (const [index, targetRotation] of definition.path) {
-    if (await flow.evaluate((element) => element.classList.contains("solved"))) break;
+    const levelState = await flow.evaluate((element, expectedCount) => ({
+      solved: element.classList.contains("solved"),
+      tileCount: element.querySelectorAll(".web-flow__tile").length,
+      expectedCount
+    }), definition.count);
+    if (levelState.solved || levelState.tileCount !== levelState.expectedCount) break;
     const transform = await tiles.nth(index).locator(".web-flow__pipe").evaluate(
       (element) => element.style.transform
     );
@@ -205,7 +233,12 @@ const solveWebLevel = async (page, definition, { final = false } = {}) => {
     const clickCount = (targetRotation - currentRotation + 4) % 4;
     for (let click = 0; click < clickCount; click += 1) {
       await tiles.nth(index).click();
-      if (await flow.evaluate((element) => element.classList.contains("solved"))) break;
+      const clickState = await flow.evaluate((element, expectedCount) => ({
+        solved: element.classList.contains("solved"),
+        tileCount: element.querySelectorAll(".web-flow__tile").length,
+        expectedCount
+      }), definition.count);
+      if (clickState.solved || clickState.tileCount !== clickState.expectedCount) break;
     }
   }
 
@@ -214,7 +247,18 @@ const solveWebLevel = async (page, definition, { final = false } = {}) => {
     await expect(flow).toHaveAttribute("inert", "");
     await expect(flow).toHaveAttribute("aria-hidden", "true");
   } else {
-    await expect(flow).toHaveClass(/solved/);
+    await expect.poll(() => flow.evaluate((element, expectedNextCount) => {
+      if (element.classList.contains("solved")) return "solved";
+      const nextTiles = [...element.querySelectorAll(".web-flow__tile")];
+      const active = !element.hidden
+        && !element.hasAttribute("inert")
+        && element.getAttribute("aria-hidden") !== "true";
+      return active
+        && nextTiles.length === expectedNextCount
+        && nextTiles.every((tile) => !tile.disabled)
+        ? "advanced"
+        : "incomplete";
+    }, nextCount)).toMatch(/^(solved|advanced)$/);
   }
 };
 
@@ -536,7 +580,10 @@ test("each real game victory unlocks the next route immediately", async ({ page 
   await page.setViewportSize({ width: 640, height: 360 });
 
   for (let index = 0; index < webLevels.length; index += 1) {
-    await solveWebLevel(page, webLevels[index], { final: index === webLevels.length - 1 });
+    await solveWebLevel(page, webLevels[index], {
+      final: index === webLevels.length - 1,
+      nextCount: webLevels[index + 1]?.count ?? null
+    });
     if (index < webLevels.length - 1) {
       await expect(page.locator("#webFlow .web-flow__tile")).toHaveCount(webLevels[index + 1].count, {
         timeout: 3_000
@@ -561,7 +608,9 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     expectPurple: true,
     minimumLuminousRatio: 0.04,
     minimumPurpleRatio: 0.055,
-    minimumPurpleGridCoverage: 0.6
+    minimumPurpleGridCoverage: 0.6,
+    maximumNearBlackRatio: 0.65,
+    minimumWarmMagentaOrangeRatio: 0.08
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await galaxyButton.click();
@@ -588,7 +637,9 @@ test("each real game victory unlocks the next route immediately", async ({ page 
     expectPurple: true,
     minimumLuminousRatio: 0.025,
     minimumPurpleRatio: 0.035,
-    minimumPurpleGridCoverage: 0.4
+    minimumPurpleGridCoverage: 0.4,
+    maximumNearBlackRatio: 0.72,
+    minimumWarmMagentaOrangeRatio: 0.07
   });
   const mobileDistanceRail = await page.locator("#distanceScale").boundingBox();
   const mobileLabels = page.locator(".space-label.visible");

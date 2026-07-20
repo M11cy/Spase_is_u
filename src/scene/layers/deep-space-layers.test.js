@@ -671,12 +671,13 @@ describe("createCosmicWebLayer", () => {
     });
     expect(Object.isFrozen(structure)).toBe(true);
     expect(Object.isFrozen(structure.palette)).toBe(true);
-    expect(filaments.material.opacity).toBe(0.72);
+    expect(filaments.material.opacity).toBe(0.48);
     expect(hotNodes.geometry.getAttribute("position").count).toBe(12);
 
-    const renderedColors = layer.root.children.flatMap(({ geometry }) => (
-      Array.from(geometry.getAttribute("color")?.array ?? [])
-    ));
+    const renderedColors = [];
+    layer.root.traverse(({ geometry }) => {
+      renderedColors.push(...Array.from(geometry?.getAttribute("color")?.array ?? []));
+    });
     const paletteColors = structure.palette.map((hex) => new THREE.Color(hex));
     paletteColors.forEach((color) => {
       const found = Array.from({ length: renderedColors.length / 3 }, (_, index) => index * 3)
@@ -712,9 +713,9 @@ describe("createCosmicWebLayer", () => {
   });
 
   it.each([
-    ["high", 18000, 120, 12, 0.72],
-    ["medium", 9800, 92, 9, 0.64],
-    ["economy", 5200, 68, 7, 0.56]
+    ["high", 18000, 120, 12, 0.48],
+    ["medium", 9800, 92, 9, 0.44],
+    ["economy", 5200, 68, 7, 0.40]
   ])("uses the exact %s density and readable filament budget", (
     tier,
     cosmicWebPoints,
@@ -851,6 +852,102 @@ describe("createCosmicWebLayer", () => {
     });
   });
 
+  it("bounds short-edge cubic bends by full chord length", () => {
+    const layer = createCosmicWeb({
+      quality: { tier: "high", cosmicWebPoints: 18000 },
+      seed: 13
+    });
+    const positions = layer.root.getObjectByName("cosmic-web-filaments")
+      .geometry.getAttribute("position");
+    layer.graph.edges.forEach(([from, to], edgeIndex) => {
+      const start = layer.graph.nodes[from];
+      const end = layer.graph.nodes[to];
+      const chordLength = Math.hypot(...end.map((value, axis) => value - start[axis]));
+      const maximumBend = Math.max(...Array.from({ length: 9 }, (_, segmentIndex) => (
+        distanceToSegment(pointAt(positions, edgeIndex * 20 + segmentIndex * 2 + 1), start, end)
+      )));
+      expect(maximumBend).toBeLessThanOrEqual(chordLength * 0.4 + 0.001);
+    });
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", 18000, ["far", "mid", "near"], [0.62, 0.78, 0.58]],
+    ["medium", 9800, ["far", "near"], [0.62 * 1.55, 0.58 * 1.55]],
+    ["economy", 5200, ["mid"], [0.78 * 2.35]]
+  ])("creates deterministic %s procedural tissue", (
+    tier,
+    cosmicWebPoints,
+    expectedProfiles,
+    expectedOpacities
+  ) => {
+    const first = createCosmicWeb({ quality: { tier, cosmicWebPoints }, seed: 20260719 });
+    const second = createCosmicWeb({ quality: { tier, cosmicWebPoints }, seed: 20260719 });
+    const tissue = first.root.children.filter(({ name }) => name === "cosmic-web-tissue")[0];
+    const secondTissue = second.root.getObjectByName("cosmic-web-tissue");
+    const metadata = first.root.userData.structure.tissue;
+    const baseLayer = new THREE.Layers();
+    const bloomLayer = new THREE.Layers();
+    baseLayer.set(0);
+    bloomLayer.set(BLOOM_SCENE_LAYER);
+
+    expect(first.root.children[0]).toBe(tissue);
+    expect(tissue.children).toHaveLength(expectedProfiles.length);
+    expect(tissue.children.map(({ name }) => name)).toEqual(
+      expectedProfiles.map((profile) => `cosmic-web-tissue-${profile}`)
+    );
+    expect(metadata).toEqual(second.root.userData.structure.tissue);
+    expect(metadata).toMatchObject({
+      algorithm: "cellular-voronoi-fbm",
+      layerCount: expectedProfiles.length,
+      palette: [0x8b5cf6, 0xd946ef, 0xf472b6, 0xf59e42]
+    });
+    expect(metadata.profiles.map(({ name }) => name)).toEqual(expectedProfiles);
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata.profiles)).toBe(true);
+    expect(metadata.profiles.every(Object.isFrozen)).toBe(true);
+    expect(tissue.children.every(({ material }) => (
+      material.isShaderMaterial
+      && material.blending === THREE.AdditiveBlending
+      && material.depthWrite === false
+      && material.depthTest === true
+      && material.toneMapped === false
+      && material.transparent === true
+    ))).toBe(true);
+    expect(tissue.children.every((mesh) => (
+      mesh.layers.test(baseLayer) && !mesh.layers.test(bloomLayer) && mesh.renderOrder === 2
+    ))).toBe(true);
+    expect(new Set(tissue.children.map(({ geometry }) => geometry)).size).toBe(1);
+    tissue.children.forEach((mesh, index) => {
+      expect(mesh.position.z).toBe(metadata.profiles[index].depth);
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(expectedOpacities[index], 6);
+      expect(mesh.material.uniforms.uUvOffset.value.toArray()).toEqual(
+        secondTissue.children[index].material.uniforms.uUvOffset.value.toArray()
+      );
+      expect(mesh.material.fragmentShader).toContain("float fbm(vec2 point)");
+      expect(mesh.material.fragmentShader).toContain("float cellularRidge(vec2 point)");
+      expect(mesh.material.fragmentShader).toContain("float fineDust(vec2 point)");
+      expect(Object.keys(mesh.material.uniforms).some((name) => /time|exposure/i.test(name)))
+        .toBe(false);
+    });
+
+    first.setPresence(0.37);
+    expect(tissue.children.every(({ material }) => (
+      material.uniforms.uPresence.value === 0.37
+    ))).toBe(true);
+    if (tier === "high") {
+      const opacities = tissue.children.map(({ material }) => material.uniforms.uOpacity.value);
+      expect(first.updateParallax({ x: 1, y: -1 })).toEqual({ x: 1.6, y: -1.1 });
+      expect(tissue.children.map(({ position }) => [position.x, position.y])).toEqual(
+        metadata.profiles.map(({ parallax }) => [1.6 * parallax, -1.1 * parallax])
+      );
+      expect(tissue.children.map(({ material }) => material.uniforms.uOpacity.value)).toEqual(opacities);
+    }
+
+    first.dispose();
+    second.dispose();
+  });
+
   it.each([
     ["high", 18000],
     ["medium", 9800],
@@ -861,44 +958,99 @@ describe("createCosmicWebLayer", () => {
   ) => {
     const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
     const { volume } = layer.root.userData.structure;
-    const renderedGeometry = layer.root.children.filter(({ name, geometry }) => (
-      name.startsWith("cosmic-web-") && geometry?.getAttribute("position")
-    ));
-    const violations = renderedGeometry.flatMap(({ name, geometry }) => {
+    const renderedGeometry = [];
+    layer.root.traverse((object) => {
+      if (object.name.startsWith("cosmic-web-") && object.geometry?.getAttribute("position")) {
+        object.updateMatrixWorld(true);
+        renderedGeometry.push(object);
+      }
+    });
+    const violations = renderedGeometry.flatMap((object) => {
+      const { name, geometry } = object;
       const positions = geometry.getAttribute("position");
       for (let index = 0; index < positions.count; index += 1) {
-        const coordinate = [positions.getX(index), positions.getY(index), positions.getZ(index)];
-        const [x, y, z] = coordinate;
+        const world = new THREE.Vector3(
+          positions.getX(index),
+          positions.getY(index),
+          positions.getZ(index)
+        ).applyMatrix4(object.matrixWorld);
+        const coordinate = world.toArray();
         const finite = coordinate.every(Number.isFinite);
-        const inside = Math.abs(x) <= volume.width / 2
-          && Math.abs(y) <= volume.height / 2
-          && z >= volume.centerZ - volume.depth / 2
-          && z <= volume.centerZ + volume.depth / 2;
+        const inside = Math.abs(world.x) <= volume.width / 2
+          && Math.abs(world.y) <= volume.height / 2
+          && world.z >= volume.centerZ - volume.depth / 2
+          && world.z <= volume.centerZ + volume.depth / 2;
         if (!finite || !inside) return [{ name, index, coordinate }];
       }
       return [];
     });
-    const boundaryRatios = renderedGeometry.map(({ name, geometry }) => {
-      const positions = geometry.getAttribute("position");
-      const boundaryCount = Array.from({ length: positions.count }, (_, index) => index)
-        .filter((index) => (
-          Math.abs(positions.getX(index)) === volume.width / 2
-          || Math.abs(positions.getY(index)) === volume.height / 2
-          || positions.getZ(index) === volume.centerZ - volume.depth / 2
-          || positions.getZ(index) === volume.centerZ + volume.depth / 2
-        )).length;
-      return { name, ratio: boundaryCount / positions.count };
-    });
+    const boundaryRatios = renderedGeometry
+      .filter(({ geometry }) => geometry.getAttribute("position").count > 4)
+      .map(({ name, geometry, matrixWorld }) => {
+        const positions = geometry.getAttribute("position");
+        const boundaryCount = Array.from({ length: positions.count }, (_, index) => index)
+          .filter((index) => {
+            const world = new THREE.Vector3(
+              positions.getX(index),
+              positions.getY(index),
+              positions.getZ(index)
+            ).applyMatrix4(matrixWorld);
+            return Math.abs(world.x) === volume.width / 2
+              || Math.abs(world.y) === volume.height / 2
+              || world.z === volume.centerZ - volume.depth / 2
+              || world.z === volume.centerZ + volume.depth / 2;
+          }).length;
+        return { name, ratio: boundaryCount / positions.count };
+      });
 
     expect(renderedGeometry.map(({ name }) => name).sort()).toEqual([
       "cosmic-web-depth",
       "cosmic-web-filaments",
       "cosmic-web-hot-nodes",
       "cosmic-web-nodes",
-      "cosmic-web-particles"
+      "cosmic-web-particles",
+      ...({
+        high: ["cosmic-web-tissue-far", "cosmic-web-tissue-mid", "cosmic-web-tissue-near"],
+        medium: ["cosmic-web-tissue-far", "cosmic-web-tissue-near"],
+        economy: ["cosmic-web-tissue-mid"]
+      })[tier]
     ]);
     expect(violations).toEqual([]);
     expect(boundaryRatios.every(({ ratio }) => ratio < 0.02)).toBe(true);
+
+    layer.dispose();
+  });
+
+  it.each([
+    ["high", 18000],
+    ["medium", 9800],
+    ["economy", 5200]
+  ])("keeps parallax-shifted %s tissue inside the published volume", (
+    tier,
+    cosmicWebPoints
+  ) => {
+    const layer = createCosmicWeb({ quality: { tier, cosmicWebPoints } });
+    const { volume } = layer.root.userData.structure;
+
+    [{ x: 1, y: 1 }, { x: -1, y: -1 }].forEach((pointer) => {
+      layer.updateParallax(pointer);
+      layer.root.updateMatrixWorld(true);
+      const tissue = layer.root.getObjectByName("cosmic-web-tissue");
+      tissue.children.forEach((mesh) => {
+        const positions = mesh.geometry.getAttribute("position");
+        for (let index = 0; index < positions.count; index += 1) {
+          const world = new THREE.Vector3(
+            positions.getX(index),
+            positions.getY(index),
+            positions.getZ(index)
+          ).applyMatrix4(mesh.matrixWorld);
+          expect(Math.abs(world.x)).toBeLessThanOrEqual(volume.width / 2 - 0.5 + 0.001);
+          expect(Math.abs(world.y)).toBeLessThanOrEqual(volume.height / 2 - 0.5 + 0.001);
+          expect(world.z).toBeGreaterThanOrEqual(volume.centerZ - volume.depth / 2);
+          expect(world.z).toBeLessThanOrEqual(volume.centerZ + volume.depth / 2);
+        }
+      });
+    });
 
     layer.dispose();
   });
@@ -1080,7 +1232,7 @@ describe("createCosmicWebLayer", () => {
     const economy = createCosmicWeb();
 
     expect(reduced.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
-    expect(reduced.root.getObjectByName("cosmic-web-filaments").material.opacity).toBe(0.72);
+    expect(reduced.root.getObjectByName("cosmic-web-filaments").material.opacity).toBe(0.48);
     expect(economy.updateParallax({ x: 1, y: -1 })).toEqual({ x: 0, y: 0 });
     economy.setPresence("visible");
     expect(economy.root.visible).toBe(false);
@@ -1112,8 +1264,12 @@ describe("createCosmicWebLayer", () => {
 
   it("disposes every resource tree only once", () => {
     const layer = createCosmicWeb();
-    const resources = layer.root.children.flatMap((child) => [child.geometry, child.material]);
-    const disposeSpies = resources.map((resource) => vi.spyOn(resource, "dispose"));
+    const resources = new Set();
+    layer.root.traverse(({ geometry, material }) => {
+      if (geometry) resources.add(geometry);
+      if (material) resources.add(material);
+    });
+    const disposeSpies = [...resources].map((resource) => vi.spyOn(resource, "dispose"));
 
     layer.dispose();
     layer.dispose();

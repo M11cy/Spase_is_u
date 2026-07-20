@@ -5,6 +5,7 @@ import {
   disposeObjectTree,
   resolveParallax
 } from "./deep-space-utils.js";
+import { createCosmicTissue } from "./cosmic-tissue.js";
 
 const VOLUME = Object.freeze({ width: 1320, height: 760, depth: 190, centerZ: -235 });
 const VOLUME_BOUNDS = Object.freeze({
@@ -17,7 +18,7 @@ const VOLUME_BOUNDS = Object.freeze({
 });
 const PALETTE = Object.freeze([0x8b5cf6, 0xd946ef, 0xf472b6, 0xfbbf24]);
 const NODE_BUDGET = Object.freeze({ high: 120, medium: 92, economy: 68 });
-const FILAMENT_OPACITY = Object.freeze({ high: 0.72, medium: 0.64, economy: 0.56 });
+const FILAMENT_OPACITY = Object.freeze({ high: 0.48, medium: 0.44, economy: 0.40 });
 const HOT_NODE_RATIO = 0.1;
 const DEPTH_LAYERS = 3;
 const DEPTH_CENTERS = Object.freeze([-300, -235, -170]);
@@ -249,12 +250,24 @@ const createEdgeCurve = (start, end, edgeIndex) => {
   const deltaX = end[0] - start[0];
   const deltaY = end[1] - start[1];
   const planarLength = Math.max(1, Math.hypot(deltaX, deltaY));
-  const lateralMagnitude = Math.min(24, Math.max(9, planarLength * 0.16));
   const phase = (edgeIndex + 1) * 2.399963229728653;
+  const chordLength = Math.max(0.001, Math.hypot(
+    deltaX,
+    deltaY,
+    end[2] - start[2]
+  ));
+  const lateralMagnitude = Math.min(
+    24,
+    chordLength * 0.32,
+    Math.max(9, planarLength * 0.16)
+  );
   const lateralDirection = Math.sin(phase) >= 0 ? 1 : -1;
   const normalX = -deltaY / planarLength * lateralDirection;
   const normalY = deltaX / planarLength * lateralDirection;
-  const verticalMagnitude = 4 + Math.abs(Math.cos(phase)) * 7;
+  const verticalMagnitude = Math.min(
+    chordLength * 0.2,
+    4 + Math.abs(Math.cos(phase)) * 7
+  );
   const controlOne = clampPositionToInsetVolume([
     start[0] + deltaX / 3 + normalX * lateralMagnitude,
     start[1] + deltaY / 3 + normalY * lateralMagnitude,
@@ -484,6 +497,7 @@ export const createCosmicWebLayer = (input) => {
   const hotNodeCount = Math.round(nodeBudget * HOT_NODE_RATIO);
   const graph = buildGraph(seed, nodeBudget);
   const curves = createEdgeCurves(graph);
+  const tissue = createCosmicTissue({ THREE, tier: quality.tier, seed, volume: VOLUME });
   const root = new THREE.Group();
   root.name = "cosmic-web-layer";
   root.visible = false;
@@ -495,6 +509,7 @@ export const createCosmicWebLayer = (input) => {
     hotNodeCount,
     depthLayers: DEPTH_LAYERS,
     seed,
+    tissue: tissue.metadata,
     connection: "staggered-lattice-spanning"
   });
   const filaments = createFilaments(THREE, graph, curves, quality.tier);
@@ -506,13 +521,14 @@ export const createCosmicWebLayer = (input) => {
   fadedObjects.forEach((object) => {
     object.userData.baseOpacity = object.material.opacity;
   });
-  root.add(...fadedObjects);
+  root.add(tissue.root, ...fadedObjects);
   let disposed = false;
 
   const setPresence = (value) => {
     if (disposed) return;
     const presence = clampPresence(value);
     root.visible = presence > 0.01;
+    tissue.setPresence(presence);
     fadedObjects.forEach((object) => {
       object.material.opacity = object.userData.baseOpacity * presence;
     });
@@ -528,11 +544,13 @@ export const createCosmicWebLayer = (input) => {
       const offset = resolveParallax({ x, y, reducedMotion, tier: quality.tier });
       root.position.x = offset.x;
       root.position.y = offset.y;
+      tissue.setParallax(offset);
       return Object.freeze({ x: root.position.x, y: root.position.y });
     },
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      tissue.dispose();
       disposeObjectTree(root);
     }
   });
