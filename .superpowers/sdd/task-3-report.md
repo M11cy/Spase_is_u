@@ -35,3 +35,13 @@ Related plan: [[2026-07-20-ultra-photographic-space]].
 ## Residual concern
 
 The implementation preserves `root.position.z = depth` during parallax. This follows the explicit task contract; it differs from the plan's sample expectation ending in `z = 0` after a parallax call.
+
+## Review remediation
+
+> [!success] Validation hardening
+> The review found that the texture boundary accepted arbitrary objects. RED was reproduced with both `{}` and a resource-style wrapper `{ texture: new THREE.Texture(), release() {} }`; both reached `MeshBasicMaterial` instead of failing fast. The boundary now requires `texture.isTexture === true`.
+
+- Invalid base opacities below `0` and above `1` are covered explicitly; only runtime presence is clamped.
+- GREEN: focused `16/16`; full unit suite `236/236`.
+- Coverage remains statements `89.30%`, branches `81.00%`, functions `87.00%`, lines `90.99%`.
+- Build passed with the same Vite chunk-size advisory noted above.

@@ -19,8 +19,8 @@ const requirePhotographicPlaneInput = ({
     || typeof THREE.Mesh !== "function") {
     throw new TypeError("Photographic plane requires a compatible THREE namespace");
   }
-  if (!texture || typeof texture !== "object") {
-    throw new TypeError("Photographic plane requires a texture");
+  if (!texture || texture.isTexture !== true) {
+    throw new TypeError("Photographic plane requires a THREE texture");
   }
   if (typeof name !== "string" || name.trim().length === 0) {
     throw new TypeError("Photographic plane requires a name");

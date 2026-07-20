@@ -91,11 +91,15 @@ describe("createPhotographicPlane", () => {
   it.each([
     { THREE: null },
     { texture: null },
+    { texture: {} },
+    { texture: { texture: new THREE.Texture(), release() {} } },
     { name: "" },
     { width: 0 },
     { aspect: Number.NaN },
     { depth: Infinity },
     { opacity: "0.94" },
+    { opacity: -0.01 },
+    { opacity: 1.01 },
     { renderOrder: 1.5 }
   ])("rejects invalid boundary input %j", (overrides) => {
     expect(() => createPlane(overrides)).toThrow(TypeError);
